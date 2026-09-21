@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect to bwUniCluster — SSH Setup Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #16202A;
+    --ink-2: #1F2E3A;
+    --paper: #FFFFFF;
+    --paper-2: #F3F6F5;
+    --accent: #D9A441;
+    --accent-deep: #96701E;
+    --good: #3E9C6F;
+    --warn-bg: #FBF1DD;
+    --warn-border: #E8C77B;
+    --warn-text: #6B4E10;
+    --text: #1C2530;
+    --text-muted: #57646D;
+    --border: #E2E7E5;
+    --code-bg: #101820;
+    --code-text: #E9EDE9;
+    --code-muted: #7C8A93;
+    --code-var: #E3B15C;
+    --code-prompt: #6FCB9A;
+    --radius: 10px;
+    --content-w: 720px;
+  }
+
+  * { box-sizing: border-box; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    font-family: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background: var(--paper);
+    line-height: 1.6;
+    font-size: 17px;
+  }
+
+  a { color: var(--accent-deep); }
+  a:focus-visible, button:focus-visible, .tab:focus-visible {
+    outline: 2px solid var(--accent-deep);
+    outline-offset: 2px;
+  }
+
+  h1, h2, h3 {
+    font-family: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--ink);
+  }
+
+  code, pre, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    background: var(--ink);
+    color: #E7ECEE;
+    padding: 3.5rem 1.5rem 3rem;
+  }
+  .hero-inner {
+    max-width: 980px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+    gap: 2.5rem;
+    align-items: center;
+  }
+  .kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--accent);
+    font-weight: 500;
+    margin-bottom: 0.9rem;
+  }
+  .kicker svg { width: 16px; height: 16px; }
+  .hero h1 {
+    color: #fff;
+    font-size: clamp(1.8rem, 3vw, 2.5rem);
+    margin: 0 0 0.7rem;
+  }
+  .hero p {
+    color: #B9C4C9;
+    max-width: 46ch;
+    margin: 0;
+  }
+  .hero-meta {
+    margin-top: 1.6rem;
+    display: flex;
+    gap: 1.6rem;
+    flex-wrap: wrap;
+    font-size: 0.92rem;
+    color: #9FADB3;
+  }
+  .hero-meta strong { color: #E7ECEE; font-weight: 600; }
+
+  /* fake terminal window */
+  .term {
+    background: var(--code-bg);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 20px 45px -18px rgba(0,0,0,0.6);
+    border: 1px solid #263542;
+  }
+  .term-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.6rem 0.8rem;
+    background: #182430;
+    border-bottom: 1px solid #263542;
+  }
+  .term-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .term-dot.r { background: #E5605A; }
+  .term-dot.y { background: #E3B25C; }
+  .term-dot.g { background: #57C08A; }
+  .term-title {
+    margin-left: 0.5rem;
+    font-size: 0.78rem;
+    color: var(--code-muted);
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .term-body {
+    padding: 1rem 1.1rem 1.3rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.85rem;
+    color: var(--code-text);
+    min-height: 168px;
+  }
+  .term-body .ln { white-space: pre; opacity: 0; animation: reveal 0.4s ease forwards; }
+  @media (prefers-reduced-motion: reduce) { .term-body .ln { opacity: 1; animation: none; } }
+  .term-body .prompt { color: var(--code-prompt); }
+  .term-body .dim { color: var(--code-muted); }
+  .cursor {
+    display: inline-block; width: 7px; height: 1em; background: var(--accent);
+    vertical-align: text-bottom; animation: blink 1s step-end infinite;
+  }
+  @keyframes reveal { to { opacity: 1; } }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---------- Layout ---------- */
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 3rem;
+  }
+  @media (max-width: 820px) {
+    .wrap { grid-template-columns: 1fr; }
+    .hero-inner { grid-template-columns: 1fr; }
+  }
+
+  .rail {
+    position: sticky;
+    top: 1.5rem;
+    align-self: start;
+    padding-top: 3rem;
+    font-size: 0.9rem;
+  }
+  @media (max-width: 820px) { .rail { display: none; } }
+  .rail-title { color: var(--text-muted); font-size: 0.82rem; margin-bottom: 0.7rem; }
+  .rail ol { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--border); }
+  .rail li { position: relative; padding: 0.35rem 0 0.35rem 1rem; }
+  .rail li::before {
+    content: ""; position: absolute; left: -5px; top: 0.7rem;
+    width: 8px; height: 8px; border-radius: 50%; background: var(--border);
+  }
+  .rail a { color: var(--text-muted); text-decoration: none; }
+  .rail a:hover { color: var(--ink); }
+
+  main { padding: 3rem 0 4rem; max-width: var(--content-w); }
+
+  section { margin-bottom: 3.2rem; }
+  section > h2 {
+    font-size: 1.4rem;
+    margin: 0 0 0.3rem;
+  }
+  .section-sub { color: var(--text-muted); margin: 0 0 1.3rem; max-width: 62ch; }
+
+  /* registration flow (A/B/C) */
+  .reg-flow { display: flex; flex-direction: column; gap: 0.9rem; }
+  .reg-step {
+    display: flex; gap: 1rem; align-items: flex-start;
+    padding: 1rem 1.1rem; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--paper-2);
+  }
+  .reg-letter {
+    flex: none; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--ink); color: var(--accent); font-weight: 600;
+    display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+  }
+  .reg-step h3 { margin: 0 0 0.25rem; font-size: 1.02rem; }
+  .reg-step p { margin: 0 0 0.5rem; color: var(--text-muted); font-size: 0.96rem; }
+  .reg-link {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    font-size: 0.9rem; font-weight: 500; text-decoration: none;
+  }
+  .reg-link svg { width: 13px; height: 13px; }
+
+  /* checklist */
+  .checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+  .checklist li {
+    display: flex; gap: 0.7rem; align-items: flex-start;
+    padding: 0.15rem 0;
+  }
+  .checklist svg { flex: none; width: 19px; height: 19px; margin-top: 0.15rem; color: var(--good); }
+
+  /* numbered steps */
+  .step {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 1.1rem;
+    padding-bottom: 2.4rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2.4rem;
+  }
+  .step:last-of-type { border-bottom: none; }
+  .step-num {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--ink); color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 1.05rem;
+  }
+  .step h3 { margin: 0 0 0.5rem; font-size: 1.15rem; }
+  .step p { margin: 0 0 0.9rem; }
+  .step p:last-child { margin-bottom: 0; }
+  .step > div { min-width: 0; }
+
+  code.inline {
+    background: var(--paper-2); border: 1px solid var(--border);
+    padding: 0.1rem 0.35rem; border-radius: 5px; font-size: 0.88em;
+  }
+
+  pre.code-block {
+    position: relative;
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 1rem 3.2rem 1rem 1.1rem;
+    border-radius: var(--radius);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.87rem;
+    line-height: 1.65;
+    margin: 0 0 0.9rem;
+  }
+  pre.code-block .var { color: var(--code-var); }
+  pre.code-block .cm { color: var(--code-muted); }
+  .copy-btn {
+    position: absolute; top: 0.55rem; right: 0.55rem;
+    background: #22303C; color: #C7D1D4; border: 1px solid #324351;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 0.72rem; padding: 0.3rem 0.55rem; border-radius: 6px;
+    cursor: pointer; transition: background 0.15s ease, color 0.15s ease;
+  }
+  .copy-btn:hover { background: #2C3D4B; color: #fff; }
+  .copy-btn.copied { background: var(--good); color: #fff; border-color: var(--good); }
+
+  .callout {
+    display: flex; gap: 0.7rem;
+    background: var(--warn-bg); border: 1px solid var(--warn-border);
+    color: var(--warn-text);
+    padding: 0.85rem 1rem; border-radius: var(--radius);
+    font-size: 0.93rem; margin: 0 0 0.9rem;
+  }
+  .callout svg { flex: none; width: 18px; height: 18px; margin-top: 0.1rem; }
+  .callout strong { font-weight: 600; }
+
+  /* tabs */
+  .tabs { margin-bottom: 0.2rem; }
+  .tab-buttons { display: flex; gap: 0.4rem; margin-bottom: 0.7rem; }
+  .tab {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 0.87rem; font-weight: 500;
+    padding: 0.45rem 0.8rem;
+    border: 1px solid var(--border);
+    background: var(--paper);
+    color: var(--text-muted);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .tab[aria-selected="true"] {
+    background: var(--ink); color: var(--accent); border-color: var(--ink);
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  footer {
+    background: var(--paper-2);
+    border-top: 1px solid var(--border);
+    padding: 2.5rem 1.5rem 3rem;
+  }
+  .footer-inner { max-width: 980px; margin: 0 auto; }
+  .cheat {
+    background: var(--code-bg); color: var(--code-text);
+    border-radius: var(--radius); padding: 1.1rem 1.3rem;
+    font-size: 0.85rem; line-height: 1.9; max-width: 640px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .cheat .step-tag { color: var(--code-muted); }
+  footer p.credit { color: var(--text-muted); font-size: 0.88rem; margin-top: 1.4rem; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div>
+      <span class="kicker">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 14l-3.5 3.5a2.12 2.12 0 000 3l0 0a2.12 2.12 0 003 0L10 17"/><circle cx="14.5" cy="9.5" r="5.5"/></svg>
+        SSH key setup
+      </span>
+      <h1>Connect to bwUniCluster</h1>
+      <p>A one-time setup so your laptop can log in to bwUniCluster with a key instead of a password — for Data Science &amp; Modelling.</p>
+      <div class="hero-meta">
+        <span><strong>7 steps</strong> · once you're registered</span>
+        <span><strong>~15 min</strong> hands-on</span>
+      </div>
+    </div>
+    <div class="term" aria-hidden="true">
+      <div class="term-bar">
+        <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+        <span class="term-title">Terminal</span>
+      </div>
+      <div class="term-body">
+        <div class="ln" style="animation-delay:.1s"><span class="prompt">you@laptop</span>:~$ ssh bwunicluster</div>
+        <div class="ln" style="animation-delay:.6s dim">&nbsp;</div>
+        <div class="ln dim" style="animation-delay:.9s">Enter passphrase for key '~/.ssh/bwunicluster':</div>
+        <div class="ln dim" style="animation-delay:1.4s">Last login: Mon Sep 21 10:02:17 2026 from 93.184.x.x</div>
+        <div class="ln" style="animation-delay:1.9s">&nbsp;</div>
+        <div class="ln" style="animation-delay:2.1s"><span class="prompt">[fr_ab1234@uc3n990 ~]$</span> <span class="cursor"></span></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="rail" aria-label="On this page">
+    <div class="rail-title">On this page</div>
+    <ol>
+      <li><a href="#register">Before you register</a></li>
+      <li><a href="#prereqs">Before you start</a></li>
+      <li><a href="#step-1">1. Generate a key pair</a></li>
+      <li><a href="#step-2">2. Copy the public key</a></li>
+      <li><a href="#step-3">3. Register it in bwIDM</a></li>
+      <li><a href="#step-4">4. Confirm with your OTP</a></li>
+      <li><a href="#step-5">5. Enable it for the cluster</a></li>
+      <li><a href="#step-6">6. Add a shortcut (optional)</a></li>
+      <li><a href="#step-7">7. Connect</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <section id="register">
+      <h2>Before you register</h2>
+      <p class="section-sub">Three things happen outside your terminal, in this order, before you can generate a key at all. Start early — the first one has a waiting period.</p>
+      <div class="reg-flow">
+        <div class="reg-step">
+          <span class="reg-letter">A</span>
+          <div>
+            <h3>Get your bwForCluster entitlement</h3>
+            <p>Requested from your university. Takes 2–3 days to come through, so do this first.</p>
+            <a class="reg-link" href="https://uni-freiburg.de/forms-en/application-for-bwhpc-entitlements/" target="_blank" rel="noopener">
+              Application form
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M9 7h8v8"/></svg>
+            </a>
+          </div>
+        </div>
+        <div class="reg-step">
+          <span class="reg-letter">B</span>
+          <div>
+            <h3>Fill out the bwUniCluster questionnaire</h3>
+            <p>A short survey required before your account can be created.</p>
+            <a class="reg-link" href="https://zas.bwhpc.de/shib/en/bwunicluster_survey.php" target="_blank" rel="noopener">
+              Questionnaire
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M9 7h8v8"/></svg>
+            </a>
+          </div>
+        </div>
+        <div class="reg-step">
+          <span class="reg-letter">C</span>
+          <div>
+            <h3>Register for bwUniCluster in bwIDM</h3>
+            <p>Creates your actual account on the cluster's identity system.</p>
+            <a class="reg-link" href="https://login.bwidm.de" target="_blank" rel="noopener">
+              bwIDM login
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M9 7h8v8"/></svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="prereqs">
+      <h2>Before you start</h2>
+      <p class="section-sub">Have these three ready — everything below assumes them.</p>
+      <ul class="checklist">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Your bwUniCluster registration is complete and your bwIDM account exists.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> A terminal on your own laptop — macOS Terminal or the VS Code integrated terminal both work; they run the same shell.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Your two-factor / OTP method for bwIDM set up — you'll be asked for a code partway through.</li>
+      </ul>
+    </section>
+
+    <section id="steps" aria-label="SSH setup steps">
+
+      <div class="step" id="step-1">
+        <div class="step-num">1</div>
+        <div>
+          <h3>Generate a key pair on your own machine</h3>
+          <p>Open your terminal and run this <strong>locally</strong> — not while already SSH'd into another machine.</p>
+          <pre class="code-block">ssh-keygen -t ed25519 -f ~/.ssh/bwunicluster -C <span class="var">"your_email@example.com"</span><button class="copy-btn" type="button">Copy</button></pre>
+          <p><code class="inline">-t ed25519</code> sets the key algorithm — a fixed keyword, not anything personal. <code class="inline">-f</code> names the file so it won't collide with a key you already have. <code class="inline">-C</code> is just a label; your email works well.</p>
+          <p>When prompted, <strong>set a real passphrase</strong> — don't leave it empty. This key can reach your compute allocation, and later you can use it to connect from VS Code too.</p>
+          <p>Two files appear: <code class="inline">bwunicluster</code> (private — never share this) and <code class="inline">bwunicluster.pub</code> (public — this is the one you'll upload).</p>
+          <div class="callout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+            <span><strong>Windows:</strong> this exact command works unchanged in PowerShell. If <code class="inline">ssh-keygen</code> isn't recognized, enable it via Settings → Apps → Optional Features → Add a feature → OpenSSH Client, then reopen PowerShell.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step" id="step-2">
+        <div class="step-num">2</div>
+        <div>
+          <h3>Copy the public key</h3>
+          <p>Print it and copy the full single line it outputs — it starts with <code class="inline">ssh-ed25519</code>.</p>
+          <pre class="code-block">cat ~/.ssh/bwunicluster.pub<button class="copy-btn" type="button">Copy</button></pre>
+        </div>
+      </div>
+
+      <div class="step" id="step-3">
+        <div class="step-num">3</div>
+        <div>
+          <h3>Register the key in bwIDM</h3>
+          <p>In the bwIDM portal, go to your account/profile area → <strong>Inbox → My SSH Pubkeys → Add SSH Key</strong>, then fill in:</p>
+          <ul>
+            <li><strong>SSH Key Name:</strong> <code class="inline">bwunicluster</code> (or any name you'll recognize later)</li>
+            <li><strong>SSH Key:</strong> paste the full line from step 2 (starts with <code class="inline">ssh-ed25519 AAAA…</code>)</li>
+          </ul>
+          <p>Click <strong>Add</strong>.</p>
+        </div>
+      </div>
+
+      <div class="step" id="step-4">
+        <div class="step-num">4</div>
+        <div>
+          <h3>Confirm with your OTP</h3>
+          <p>bwIDM asks for a one-time code before a new SSH key takes effect, since it grants account access. Enter the code from your authenticator app or hardware token to confirm.</p>
+        </div>
+      </div>
+
+      <div class="step" id="step-5">
+        <div class="step-num">5</div>
+        <div>
+          <h3>Enable the key for bwUniCluster 3.0</h3>
+          <p>Adding a key to your account doesn't automatically switch it on for a service. Go to <strong>Services → bwUniCluster 3.0 → Enable SSH Key</strong>, and under "Set SSH Key" select the key you just added, then link/enable it.</p>
+          <div class="callout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg>
+            <span>Propagation to the login nodes can take up to <strong>~30 minutes</strong>. If your first login attempt fails, that's usually why — wait and try again before troubleshooting further.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step" id="step-6">
+        <div class="step-num">6</div>
+        <div>
+          <h3>Optional: add a shortcut in your SSH config</h3>
+          <p>This lets you type <code class="inline">ssh bwunicluster</code> instead of the full hostname and key path every time. Edit the file with a text editor — don't type the path directly at the prompt, it isn't a command.</p>
+
+          <div class="tabs">
+            <div class="tab-buttons" role="tablist">
+              <button class="tab" role="tab" aria-selected="true" data-tab="mac">macOS / Linux / Git Bash</button>
+              <button class="tab" role="tab" aria-selected="false" data-tab="win">Windows (PowerShell)</button>
+            </div>
+
+            <div class="tab-panel active" data-panel="mac">
+              <pre class="code-block">nano ~/.ssh/config<button class="copy-btn" type="button">Copy</button></pre>
+              <p>Paste this in, save (<code class="inline">Ctrl+O</code>, Enter), then exit (<code class="inline">Ctrl+X</code>):</p>
+              <pre class="code-block">Host bwunicluster
+    HostName bwunicluster.scc.kit.edu
+    User <span class="var">&lt;your-bwidm-username&gt;</span>
+    IdentityFile ~/.ssh/bwunicluster<button class="copy-btn" type="button">Copy</button></pre>
+              <p>If <code class="inline">nano</code> isn't available, paste this whole block instead — it writes the file directly:</p>
+              <pre class="code-block">cat &gt;&gt; ~/.ssh/config &lt;&lt; 'EOF'
+Host bwunicluster
+    HostName bwunicluster.scc.kit.edu
+    User <span class="var">&lt;your-bwidm-username&gt;</span>
+    IdentityFile ~/.ssh/bwunicluster
+EOF<button class="copy-btn" type="button">Copy</button></pre>
+              <p style="color:var(--text-muted); font-size:0.9rem;">Recent Git for Windows installs include <code class="inline">nano</code> by default — if you're in Git Bash, everything above works unchanged.</p>
+            </div>
+
+            <div class="tab-panel" data-panel="win">
+              <pre class="code-block">New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.ssh" | Out-Null
+
+@"
+Host bwunicluster
+    HostName bwunicluster.scc.kit.edu
+    User <span class="var">&lt;your-bwidm-username&gt;</span>
+    IdentityFile ~/.ssh/bwunicluster
+"@ | Set-Content -Path "$env:USERPROFILE\.ssh\config" -Encoding ascii<button class="copy-btn" type="button">Copy</button></pre>
+              <div class="callout">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9L2.5 17a2 2 0 001.7 3h15.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+                <span><strong>If you've set up SSH before</strong> (e.g. for GitHub) and already have a <code class="inline">.ssh\config</code> file with entries in it, don't run this — <code class="inline">Set-Content</code> overwrites the whole file. Open it instead with <code class="inline">notepad $env:USERPROFILE\.ssh\config</code> and paste the four lines above below whatever's already there.</span>
+              </div>
+            </div>
+          </div>
+
+          <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.9rem;">Your username here is the short <strong>localUid</strong> shown on your bwIDM profile (e.g. <code class="inline">fr_ab1234</code>) — not your email address. Double-check the exact login node hostname in your registration confirmation email or the bwHPC wiki, since it can vary by cluster generation.</p>
+        </div>
+      </div>
+
+      <div class="step" id="step-7">
+        <div class="step-num">7</div>
+        <div>
+          <h3>Connect</h3>
+          <pre class="code-block">ssh bwunicluster<button class="copy-btn" type="button">Copy</button></pre>
+          <p>You'll be asked for the passphrase you set in step 1 — that just unlocks your local private key, it's not sent anywhere.</p>
+        </div>
+      </div>
+
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <h2 style="font-size:1.15rem; margin:0 0 1rem;">Quick reference</h2>
+    <pre class="cheat mono">
+<span class="step-tag">1</span>  ssh-keygen -t ed25519 -f ~/.ssh/bwunicluster -C "you@example.com"
+<span class="step-tag">2</span>  cat ~/.ssh/bwunicluster.pub          <span style="color:var(--code-muted)"># → paste into bwIDM</span>
+<span class="step-tag">6</span>  nano ~/.ssh/config                   <span style="color:var(--code-muted)"># → add Host block</span>
+<span class="step-tag">7</span>  ssh bwunicluster</pre>
+    <p class="credit">Data Science &amp; Modelling — SSH connection guide for bwUniCluster.</p>
+  </div>
+</footer>
+
+<script>
+  // Copy-to-clipboard for code blocks
+  document.querySelectorAll('.copy-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var pre = btn.closest('pre');
+      var clone = pre.cloneNode(true);
+      var btnClone = clone.querySelector('.copy-btn');
+      if (btnClone) clone.removeChild(btnClone);
+      var text = clone.textContent.replace(/\n+$/, '');
+      var done = function () {
+        btn.textContent = 'Copied';
+        btn.classList.add('copied');
+        setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () { fallbackCopy(text, done); });
+      } else {
+        fallbackCopy(text, done);
+      }
+    });
+  });
+  function fallbackCopy(text, done) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  // Tabs for step 6
+  var tabs = document.querySelectorAll('.tab');
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      tabs.forEach(function (t) { t.setAttribute('aria-selected', 'false'); });
+      tab.setAttribute('aria-selected', 'true');
+      var target = tab.getAttribute('data-tab');
+      document.querySelectorAll('.tab-panel').forEach(function (panel) {
+        panel.classList.toggle('active', panel.getAttribute('data-panel') === target);
+      });
+    });
+  });
+</script>
+
+</body>
+</html>
