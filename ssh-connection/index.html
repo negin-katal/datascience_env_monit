@@ -484,6 +484,7 @@
         <div>
           <h3>Optional: add a shortcut in your SSH config</h3>
           <p>This lets you type <code class="inline">ssh bwunicluster</code> instead of the full hostname and key path every time. Edit the file with a text editor — don't type the path directly at the prompt, it isn't a command.</p>
+          <p><strong>Windows:</strong> open Git Bash (installed with Git) and use the commands in the first tab below — recent Git for Windows installs include <code class="inline">nano</code> by default, so nothing changes for you. If Git Bash doesn't have <code class="inline">nano</code>, or you'd rather use PowerShell, use the second tab instead.</p>
 
           <div class="tabs">
             <div class="tab-buttons" role="tablist">
@@ -505,7 +506,6 @@ Host bwunicluster
     User <span class="var">&lt;your-bwidm-username&gt;</span>
     IdentityFile ~/.ssh/bwunicluster
 EOF<button class="copy-btn" type="button">Copy</button></pre>
-              <p style="color:var(--text-muted); font-size:0.9rem;">Recent Git for Windows installs include <code class="inline">nano</code> by default — if you're in Git Bash, everything above works unchanged.</p>
             </div>
 
             <div class="tab-panel" data-panel="win">
