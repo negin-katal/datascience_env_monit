@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FLUXNET Site Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #16202A;
+    --accent: #D9A441;
+    --accent-deep: #96701E;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --text: #1C2530;
+    --text-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --chip-off: #f0efec;
+    --radius: 10px;
+    /* categorical slots (fixed order) */
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+    --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+    --other: #a3a29c;
+    /* sequential blue ramp (availability) */
+    --q0: #cde2fb; --q1: #9ec5f4; --q2: #6da7ec; --q3: #3987e5; --q4: #256abf; --q5: #184f95; --q6: #0d366b;
+    --empty: #f0efec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --text: #ffffff; --text-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --chip-off: #262624;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+      --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --other: #6f6e69;
+      --q0: #104281; --q1: #184f95; --q2: #1c5cab; --q3: #2a78d6; --q4: #5598e7; --q5: #86b6ef; --q6: #cde2fb;
+      --empty: #262624;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --text: #ffffff; --text-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --chip-off: #262624;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --other: #6f6e69;
+    --q0: #104281; --q1: #184f95; --q2: #1c5cab; --q3: #2a78d6; --q4: #5598e7; --q5: #86b6ef; --q6: #cde2fb;
+    --empty: #262624;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+         background: var(--page); color: var(--text); line-height: 1.5; font-size: 16px; }
+  a { color: var(--accent-deep); }
+  :root[data-theme="dark"] a { color: var(--accent); }
+  @media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) a { color: var(--accent); } }
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 0.92em; }
+  button, select, input { font: inherit; color: inherit; }
+
+  .hero { background: var(--ink); color: #E7ECEE; padding: 2.5rem 16px 2.2rem; }
+  .wrap { max-width: 1200px; margin: 0 auto; }
+  .kicker { color: var(--accent); font-weight: 500; font-size: 0.9rem; margin-bottom: 0.5rem; }
+  .hero h1 { color: #fff; margin: 0 0 0.6rem; font-size: clamp(1.7rem, 3vw, 2.4rem); font-weight: 600; line-height: 1.2; }
+  .hero p { margin: 0; max-width: 760px; color: #C9D2D6; }
+  .stats { display: flex; flex-wrap: wrap; gap: 2rem; margin-top: 1.6rem; }
+  .stat .v { font-size: 1.8rem; font-weight: 600; color: #fff; line-height: 1.1; }
+  .stat .l { font-size: 0.85rem; color: #9FB0B8; }
+  .theme-btn { float: right; background: transparent; border: 1px solid #3a4a56; color: #C9D2D6;
+               border-radius: 999px; padding: 0.25rem 0.8rem; cursor: pointer; font-size: 0.85rem; }
+
+  main { padding: 1.2rem 16px 3rem; }
+  .filters { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center; margin: 0.4rem 0 1rem; }
+  .chip { display: inline-flex; align-items: center; gap: 0.4rem; border: 1px solid var(--border);
+          background: var(--surface); border-radius: 999px; padding: 0.25rem 0.7rem 0.25rem 0.55rem;
+          cursor: pointer; font-size: 0.88rem; color: var(--text); }
+  .chip .sw { width: 10px; height: 10px; border-radius: 50%; }
+  .chip .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chip[aria-pressed="false"] { background: var(--chip-off); color: var(--muted); }
+  .chip[aria-pressed="false"] .sw { opacity: 0.25; }
+  .ctl { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 0.3rem 0.6rem; font-size: 0.9rem; }
+  .spacer { flex: 1; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+          padding: 1rem 1.1rem 1.1rem; margin-bottom: 1.2rem; }
+  .card h2 { font-size: 1.15rem; font-weight: 600; margin: 0 0 0.15rem; }
+  .card .sub { color: var(--text-2); font-size: 0.9rem; margin: 0 0 0.8rem; }
+  #map { height: 480px; border-radius: 8px; background: var(--chip-off); }
+  .leaflet-container { font-family: inherit; }
+  .tip { font-size: 0.85rem; line-height: 1.35; }
+  .tip b { font-weight: 600; }
+  .tip .m { color: #666; }
+
+  .avail-head { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 0.6rem; }
+  .legend-q { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--text-2); }
+  .legend-q .bar { width: 140px; height: 10px; border-radius: 3px; }
+  .legend-q .nod { width: 12px; height: 10px; border-radius: 2px; background: var(--empty); border: 1px solid var(--border); }
+  #availScroll { max-height: 520px; overflow: auto; position: relative; border-top: 1px solid var(--grid); }
+  #availAxis { position: sticky; top: 0; background: var(--surface); z-index: 2; }
+  canvas { display: block; }
+  .floating { position: fixed; pointer-events: none; z-index: 1000; background: var(--surface); color: var(--text);
+              border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem 0.6rem; font-size: 0.85rem;
+              box-shadow: 0 4px 16px rgba(0,0,0,0.12); display: none; max-width: 280px; }
+  .floating .val { font-weight: 600; font-size: 0.95rem; }
+  .floating .lab { color: var(--text-2); }
+
+  #site-empty { color: var(--text-2); padding: 1.5rem 0; }
+  .site-top { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem 1rem; align-items: start; }
+  .site-top h2 { font-size: 1.4rem; margin: 0; }
+  .badge { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; border: 1px solid var(--border);
+           border-radius: 999px; padding: 0.1rem 0.55rem; margin-right: 0.3rem; color: var(--text-2); }
+  .badge .sw { width: 9px; height: 9px; border-radius: 50%; }
+  dl.meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.4rem 1.2rem; margin: 0.9rem 0; }
+  dl.meta div { min-width: 0; }
+  dl.meta dt { font-size: 0.78rem; color: var(--muted); }
+  dl.meta dd { margin: 0; font-size: 0.93rem; overflow-wrap: anywhere; }
+  .cite { font-size: 0.85rem; color: var(--text-2); background: var(--page); border-radius: 8px; padding: 0.6rem 0.75rem; overflow-wrap: anywhere; }
+  .ts-controls { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.8rem 0 0.2rem; }
+  .seg { border: 1px solid var(--border); background: var(--surface); border-radius: 7px; padding: 0.2rem 0.65rem; cursor: pointer; font-size: 0.85rem; }
+  .seg[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  #ts { width: 100%; }
+  .note { font-size: 0.83rem; color: var(--text-2); }
+
+  details.tbl summary { cursor: pointer; font-weight: 600; }
+  .tbl-wrap { max-height: 420px; overflow: auto; margin-top: 0.6rem; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--surface); cursor: pointer; font-weight: 600; color: var(--text-2); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--page); }
+
+  footer { color: var(--text-2); font-size: 0.85rem; }
+  footer h3 { font-size: 1rem; color: var(--text); margin: 1.2rem 0 0.3rem; }
+  @media (max-width: 640px) {
+    #map { height: 340px; }
+    .site-top { grid-template-columns: 1fr; }
+    .stats { gap: 1.2rem; }
+  }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <button class="theme-btn" id="themeBtn" type="button">Toggle dark mode</button>
+    <div class="kicker">Data science for environmental monitoring · flux4student</div>
+    <h1>FLUXNET Site Explorer</h1>
+    <p>Eddy-covariance towers measure the exchange of CO₂, water and energy between ecosystems and the atmosphere.
+       Explore where the towers are, how many years of data each one has, and what the fluxes and weather look like at any site.
+       Click a point on the map, a row in the availability chart, or a site in the table.</p>
+    <div class="stats" id="stats"></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="filters" id="filters" role="group" aria-label="Filter sites"></div>
+
+  <section class="card" aria-labelledby="h-map">
+    <h2 id="h-map">Where are the towers?</h2>
+    <p class="sub">Each point is one tower, coloured by vegetation type (IGBP class, grouped). Hover for details, click to open its time series below.</p>
+    <div id="map" role="application" aria-label="World map of flux tower sites"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-av">
+    <h2 id="h-av">How many years of data does each site have?</h2>
+    <p class="sub">One row per site, one column per year. The shade shows the share of half-hours in that year whose CO₂ flux (NEE) was measured or gap-filled with good quality, which is a simple measure of data quality. Grey means no data.</p>
+    <div class="avail-head">
+      <label class="note">Sort by
+        <select class="ctl" id="sortSel">
+          <option value="first">first year</option>
+          <option value="len">record length</option>
+          <option value="lat">latitude (north → south)</option>
+          <option value="id">site code</option>
+        </select>
+      </label>
+      <span class="legend-q"><span class="nod"></span>no data</span>
+      <span class="legend-q">0 %<span class="bar" id="qbar"></span>100 %</span>
+      <span class="note" id="availCount"></span>
+    </div>
+    <div id="availScroll"><canvas id="availAxis"></canvas><canvas id="avail"></canvas></div>
+  </section>
+
+  <section class="card" id="siteCard" aria-labelledby="h-site">
+    <div id="site-empty"><h2 id="h-site">Site time series</h2><p>Select a site on the map, in the availability chart or in the table to see its data here.</p></div>
+    <div id="site" hidden>
+      <div class="site-top">
+        <div>
+          <h2 id="siteTitle"></h2>
+          <div id="siteBadges" style="margin-top:0.35rem"></div>
+        </div>
+        <div class="note mono" id="siteZip"></div>
+      </div>
+      <dl class="meta" id="siteMeta"></dl>
+      <div class="cite" id="siteCite"></div>
+      <div class="ts-controls" role="group" aria-label="Time range">
+        <button class="seg" data-r="1" aria-pressed="false">Last year</button>
+        <button class="seg" data-r="3" aria-pressed="false">Last 3 years</button>
+        <button class="seg" data-r="0" aria-pressed="true">Full record</button>
+      </div>
+      <div id="ts"></div>
+      <p class="note">Weekly means (precipitation: weekly totals) calculated from the daily FLUXNET files. A week is left empty if it has fewer than 4 days of data.
+        Fluxes are the standard FLUXNET gap-filled products (NEE: variable u* threshold; GPP and RECO: night-time partitioning, or daytime partitioning where night-time is not available).
+        Sign convention: negative NEE means the ecosystem takes up CO₂.</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <details class="tbl">
+      <summary>Table of all sites</summary>
+      <div class="tbl-wrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+    </details>
+  </section>
+
+  <footer>
+    <h3>Data source and how to cite</h3>
+    <p>FLUXNET data products (ONEFlux v1.3, 2026 release), downloaded with the <a href="https://github.com/fluxnet/shuttle">FLUXNET Shuttle</a>
+      from AmeriFlux, the ICOS Carbon Portal and TERN (AmeriFlux: 22 May 2026; ICOS portal and TERN: 30 Sep 2026).
+      The data are licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC-BY-4.0</a>. If you use them, cite each site's
+      data product (shown in the site panel and in <code>citations_per_site.txt</code>), cite Pastorello et al. (2020)
+      <a href="https://doi.org/10.1038/s41597-020-0534-3">Sci. Data 7, 225</a>, and include the FLUXNET acknowledgement text given in the dataset README.</p>
+    <p>FLUXNET data products were produced and harmonized by eddy covariance regional networks and data processing centers, including AmeriFlux, ChinaFlux,
+      European Fluxes Database, ICOS, JapanFlux, KoFlux, OzFlux, SAEON, and TERN. These products also include a modified version of ERA5 hourly data provided
+      by the Copernicus Climate Change Service. Funding for the AmeriFlux data service was provided by the U.S. Department of Energy Office of Science.</p>
+    <p id="buildInfo"></p>
+  </footer>
+</main>
+<div class="floating" id="tip" role="tooltip"></div>
+
+<script>
+(() => {
+  "use strict";
+  const GROUPS = ["Needleleaf forest", "Broadleaf forest", "Mixed forest", "Grassland",
+                  "Cropland", "Savanna", "Shrubland", "Wetland", "Other"];
+  const GROUP_VAR = ["--s1","--s2","--s3","--s4","--s5","--s6","--s7","--s8","--other"];
+  const IGBP_NAME = {ENF:"Evergreen needleleaf forest", DNF:"Deciduous needleleaf forest", EBF:"Evergreen broadleaf forest",
+    DBF:"Deciduous broadleaf forest", MF:"Mixed forest", CSH:"Closed shrubland", OSH:"Open shrubland", SAV:"Savanna",
+    WSA:"Woody savanna", GRA:"Grassland", CRO:"Cropland", CVM:"Cropland/natural vegetation mosaic", WET:"Permanent wetland",
+    WAT:"Water body", SNO:"Snow and ice", BSV:"Barren", URB:"Urban"};
+
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const groupColor = g => css(GROUP_VAR[Math.max(0, GROUPS.indexOf(g))]);
+  const el = (tag, props = {}, ...kids) => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (k === "style") Object.assign(e.style, v); else if (k in e) e[k] = v; else e.setAttribute(k, v);
+    }
+    for (const k of kids) if (k != null) e.append(k);
+    return e;
+  };
+
+  let SITES = [], byId = {}, visible = [], selected = null, map, markers = {};
+  const state = { groups: new Set(GROUPS), hub: "", sort: "first", range: 0 };
+
+  // ---------- theme ----------
+  document.getElementById("themeBtn").addEventListener("click", () => {
+    const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+    const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light");
+    document.documentElement.dataset.theme = cur === "dark" ? "light" : "dark";
+    restyle();
+  });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", restyle);
+
+  // ---------- tooltip ----------
+  const tip = document.getElementById("tip");
+  function showTip(x, y, nodes) {
+    tip.replaceChildren(...nodes);
+    tip.style.display = "block";
+    const r = tip.getBoundingClientRect();
+    let left = x + 14, top = y + 14;
+    if (left + r.width > innerWidth - 8) left = x - r.width - 14;
+    if (top + r.height > innerHeight - 8) top = y - r.height - 14;
+    tip.style.left = left + "px"; tip.style.top = top + "px";
+  }
+  const hideTip = () => { tip.style.display = "none"; };
+
+  // ---------- load ----------
+  fetch("sites.json").then(r => r.json()).then(data => {
+    SITES = data.filter(s => s.lat != null && s.lon != null);
+    SITES.forEach(s => { byId[s.id] = s; s.years = Object.keys(s.avail).map(Number); });
+    buildStats(); buildFilters(); buildMap(); buildTable(); applyFilters();
+    const h = decodeURIComponent(location.hash.replace(/^#site=/, ""));
+    if (byId[h]) selectSite(h, false);
+  }).catch(err => {
+    document.getElementById("site-empty").append(el("p", {textContent: "Could not load sites.json (" + err + "). If you opened this file directly from disk, serve the folder instead, e.g. `python3 -m http.server`."}));
+  });
+
+  function buildStats() {
+    const years = SITES.reduce((a, s) => a + s.years.length, 0);
+    const y0 = Math.min(...SITES.map(s => s.first)), y1 = Math.max(...SITES.map(s => s.last));
+    const countries = new Set(SITES.map(s => s.id.slice(0, 2))).size;
+    const box = document.getElementById("stats");
+    [[SITES.length.toLocaleString("en"), "sites"], [years.toLocaleString("en"), "site-years of data"],
+     [countries, "countries"], [`${y0}–${y1}`, "years covered"]].forEach(([v, l]) =>
+      box.append(el("div", {className: "stat"}, el("div", {className: "v", textContent: v}), el("div", {className: "l", textContent: l}))));
+  }
+
+  // ---------- filters ----------
+  function buildFilters() {
+    const f = document.getElementById("filters");
+    const counts = {}; SITES.forEach(s => counts[s.group] = (counts[s.group] || 0) + 1);
+    GROUPS.filter(g => counts[g]).forEach(g => {
+      const b = el("button", {className: "chip", type: "button", "aria-pressed": "true", title: "Click to show/hide. Double-click to show only this group."},
+        el("span", {className: "sw", "data-group": g}), g + " ", el("span", {className: "n", textContent: counts[g]}));
+      let clickT;
+      b.addEventListener("click", () => {
+        clearTimeout(clickT);
+        clickT = setTimeout(() => {
+          state.groups.has(g) ? state.groups.delete(g) : state.groups.add(g);
+          b.setAttribute("aria-pressed", state.groups.has(g)); applyFilters();
+        }, 220);
+      });
+      b.addEventListener("dblclick", () => {
+        clearTimeout(clickT);
+        state.groups = new Set([g]);
+        f.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c.querySelector(".sw").dataset.group === g));
+        applyFilters();
+      });
+      f.append(b);
+    });
+    const all = el("button", {className: "chip", type: "button", textContent: "Show all"});
+    all.addEventListener("click", () => {
+      state.groups = new Set(GROUPS); f.querySelectorAll(".chip").forEach(c => c.hasAttribute("aria-pressed") && c.setAttribute("aria-pressed", "true")); applyFilters();
+    });
+    f.append(all, el("span", {className: "spacer"}));
+
+    const hubs = [...new Set(SITES.map(s => s.hub).filter(Boolean))].sort();
+    const sel = el("select", {className: "ctl", "aria-label": "Data hub"}, el("option", {value: "", textContent: "All data hubs"}),
+      ...hubs.map(h => el("option", {value: h, textContent: h})));
+    sel.addEventListener("change", () => { state.hub = sel.value; applyFilters(); });
+    const dl = el("datalist", {id: "siteList"}, ...SITES.map(s => el("option", {value: s.id, label: s.name || ""})));
+    const inp = el("input", {className: "ctl", type: "search", placeholder: "Find a site (e.g. DE-Tha)", "aria-label": "Find a site"});
+    inp.setAttribute("list", "siteList");
+    inp.addEventListener("change", () => {
+      const q = inp.value.trim().toLowerCase();
+      const hit = SITES.find(s => s.id.toLowerCase() === q) || SITES.find(s => (s.name || "").toLowerCase().includes(q));
+      if (hit) selectSite(hit.id, true);
+    });
+    f.append(sel, inp, dl);
+    paintSwatches();
+  }
+  function paintSwatches() { document.querySelectorAll(".sw[data-group]").forEach(s => s.style.background = groupColor(s.dataset.group)); }
+
+  function applyFilters() {
+    visible = SITES.filter(s => state.groups.has(s.group) && (!state.hub || s.hub === state.hub));
+    const vis = new Set(visible.map(s => s.id));
+    for (const [id, m] of Object.entries(markers)) {
+      if (vis.has(id)) { if (!map.hasLayer(m)) m.addTo(map); } else if (map.hasLayer(m)) m.remove();
+    }
+    if (selected && markers[selected]) markers[selected].bringToFront();
+    drawAvail();
+    fillTable();
+  }
+
+  // ---------- map ----------
+  let tiles;
+  function tileUrl() {
+    const dark = css("color-scheme") === "dark";
+    return `https://{s}.basemaps.cartocdn.com/${dark ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`;
+  }
+  function buildMap() {
+    map = L.map("map", {worldCopyJump: true, minZoom: 1}).setView([30, 10], 2);
+    tiles = L.tileLayer(tileUrl(), {subdomains: "abcd", maxZoom: 12,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'}).addTo(map);
+    SITES.forEach(s => {
+      const m = L.circleMarker([s.lat, s.lon], markerStyle(s));
+      m.bindTooltip(() => siteTipNode(s), {direction: "top", offset: [0, -6], className: "tip"});
+      m.on("click", () => selectSite(s.id, true));
+      markers[s.id] = m;
+    });
+  }
+  function markerStyle(s) {
+    const sel = s.id === selected;
+    return {radius: sel ? 9 : 5.5, color: sel ? css("--text") : css("--surface"), weight: sel ? 2.5 : 1.2,
+            fillColor: groupColor(s.group), fillOpacity: 0.9};
+  }
+  function siteTipNode(s) {
+    return el("div", {},
+      el("b", {textContent: s.id}), " · ", document.createTextNode(s.name || ""), el("br"),
+      el("span", {className: "m", textContent: `${s.igbp} (${IGBP_NAME[s.igbp] || s.group})`}), el("br"),
+      el("span", {className: "m", textContent: `${s.first}–${s.last} · ${s.years.length} years · ${s.hub}`}));
+  }
+
+  // ---------- availability heatmap ----------
+  const ROW = 6, LABW = 64, AXH = 22;
+  let availRows = [], Y0, Y1, colW;
+  function qColor(f) {
+    const stops = ["--q0","--q1","--q2","--q3","--q4","--q5","--q6"].map(css);
+    return stops[Math.min(6, Math.max(0, Math.round(f * 6)))];
+  }
+  function drawAvail() {
+    const sorters = {
+      first: (a, b) => a.first - b.first || a.id.localeCompare(b.id),
+      len: (a, b) => b.years.length - a.years.length || a.id.localeCompare(b.id),
+      lat: (a, b) => b.lat - a.lat,
+      id: (a, b) => a.id.localeCompare(b.id)};
+    availRows = [...visible].sort(sorters[state.sort]);
+    Y0 = Math.min(...SITES.map(s => s.first)); Y1 = Math.max(...SITES.map(s => s.last));
+    const nY = Y1 - Y0 + 1;
+    const scroll = document.getElementById("availScroll");
+    const W = scroll.clientWidth; colW = (W - LABW) / nY;
+    const dpr = devicePixelRatio || 1;
+    const ax = document.getElementById("availAxis"), cv = document.getElementById("avail");
+    const H = Math.max(availRows.length * ROW, 10);
+    for (const [c, h] of [[ax, AXH], [cv, H]]) { c.width = W * dpr; c.height = h * dpr; c.style.width = W + "px"; c.style.height = h + "px"; }
+    let g = ax.getContext("2d"); g.scale(dpr, dpr);
+    g.fillStyle = css("--text-2"); g.font = "11px IBM Plex Sans, system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    const step = colW < 18 ? 5 : 2;
+    for (let y = Y0; y <= Y1; y++) if (y % step === 0) g.fillText(y, LABW + (y - Y0 + 0.5) * colW, AXH / 2);
+    g = cv.getContext("2d"); g.scale(dpr, dpr);
+    const empty = css("--empty"), gap = colW > 6 ? 1 : 0;
+    availRows.forEach((s, i) => {
+      const y = i * ROW;
+      if (s.id === selected) { g.fillStyle = css("--accent"); g.fillRect(0, y, LABW - 6, ROW - 1); }
+      for (let yr = Y0; yr <= Y1; yr++) {
+        const v = s.avail[yr];
+        g.fillStyle = v == null ? empty : qColor(v);
+        g.fillRect(LABW + (yr - Y0) * colW, y, colW - gap, ROW - 1);
+      }
+    });
+    document.getElementById("availCount").textContent = `${availRows.length} sites shown`;
+    const bar = document.getElementById("qbar");
+    bar.style.background = `linear-gradient(90deg, ${["--q0","--q1","--q2","--q3","--q4","--q5","--q6"].map(css).join(",")})`;
+  }
+  const cv = document.getElementById("avail");
+  function availHit(e) {
+    const r = cv.getBoundingClientRect();
+    const i = Math.floor((e.clientY - r.top) / ROW), x = e.clientX - r.left;
+    const s = availRows[i]; if (!s) return null;
+    const yr = x < LABW ? null : Y0 + Math.floor((x - LABW) / colW);
+    return {s, yr};
+  }
+  cv.addEventListener("pointermove", e => {
+    const h = availHit(e); if (!h) return hideTip();
+    const v = h.yr != null ? h.s.avail[h.yr] : null;
+    showTip(e.clientX, e.clientY, [
+      el("div", {className: "val", textContent: h.yr == null ? h.s.id : (v == null ? "no data" : Math.round(v * 100) + " % good-quality NEE")}),
+      el("div", {className: "lab", textContent: `${h.s.id} · ${h.s.name || ""}${h.yr != null ? " · " + h.yr : ""}`}),
+      el("div", {className: "lab", textContent: "click to open time series"})]);
+  });
+  cv.addEventListener("pointerleave", hideTip);
+  cv.addEventListener("click", e => { const h = availHit(e); if (h) selectSite(h.s.id, true); });
+  document.getElementById("sortSel").addEventListener("change", e => { state.sort = e.target.value; drawAvail(); });
+  addEventListener("resize", () => { clearTimeout(window._rz); window._rz = setTimeout(() => { drawAvail(); if (selected) Plotly.Plots.resize("ts"); }, 150); });
+
+  // ---------- table ----------
+  const COLS = [["id","Site"],["name","Name"],["igbp","IGBP"],["lat","Lat",1],["lon","Lon",1],["elev","Elev. (m)",1],
+                ["first","First",1],["last","Last",1],["ny","Years",1],["hub","Data hub"]];
+  let tsort = {k: "id", dir: 1};
+  function buildTable() {
+    const tr = el("tr");
+    COLS.forEach(([k, lab, num]) => {
+      const th = el("th", {textContent: lab, className: num ? "num" : "", scope: "col"});
+      th.addEventListener("click", () => { tsort = {k, dir: tsort.k === k ? -tsort.dir : 1}; fillTable(); });
+      tr.append(th);
+    });
+    document.querySelector("#tbl thead").append(tr);
+  }
+  function fillTable() {
+    const rows = [...visible].map(s => ({...s, ny: s.years.length}));
+    rows.sort((a, b) => { const x = a[tsort.k], y = b[tsort.k];
+      return (x == null) - (y == null) || (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * tsort.dir; });
+    const tb = document.querySelector("#tbl tbody"); tb.replaceChildren();
+    rows.forEach(s => {
+      const tr = el("tr", {tabIndex: 0});
+      COLS.forEach(([k, , num]) => tr.append(el("td", {className: num ? "num" : "", textContent: s[k] ?? ""})));
+      tr.addEventListener("click", () => selectSite(s.id, true));
+      tr.addEventListener("keydown", e => { if (e.key === "Enter") selectSite(s.id, true); });
+      tb.append(tr);
+    });
+  }
+
+  // ---------- site panel ----------
+  const PANELS = [
+    {title: "Air (blue) and soil (orange) temperature", unit: "°C", series: [["TA","Air temperature"],["TS","Soil temperature"]], solo: {TA: "Air temperature", TS: "Soil temperature"}},
+    {title: "Precipitation", unit: "mm per week", series: [["P","Precipitation"]], bar: true},
+    {title: "Vapour pressure deficit (dryness)", unit: "hPa", series: [["VPD","VPD"]]},
+    {title: "Incoming shortwave radiation", unit: "W m⁻²", series: [["SW","Shortwave in"]]},
+    {title: "Soil water content (top layer)", unit: "%", series: [["SWC","Soil water content"]]},
+    {title: "GPP (blue) and respiration (orange)", unit: "g C m⁻² d⁻¹", series: [["GPP","GPP"],["RECO","Ecosystem respiration"]], solo: {GPP: "Gross primary production (GPP)", RECO: "Ecosystem respiration"}},
+    {title: "NEE (negative = CO₂ uptake)", unit: "g C m⁻² d⁻¹", series: [["NEE","NEE"]], zero: true},
+    {title: "Latent (blue) and sensible (orange) heat", unit: "W m⁻²", series: [["LE","Latent heat"],["H","Sensible heat"]], solo: {LE: "Latent heat (evapotranspiration)", H: "Sensible heat"}},
+    {title: "NEE data quality", unit: "fraction good", series: [["NEE_QC","Share measured or good gap-fill"]], fixed: [0, 1]},
+  ];
+  let cur = null;
+  function selectSite(id, scroll) {
+    const prev = selected; selected = id;
+    if (prev && markers[prev]) markers[prev].setStyle(markerStyle(byId[prev]));
+    if (markers[id]) { markers[id].setStyle(markerStyle(byId[id])).bringToFront(); }
+    history.replaceState(null, "", "#site=" + encodeURIComponent(id));
+    drawAvail();
+    const s = byId[id];
+    document.getElementById("site-empty").hidden = true;
+    document.getElementById("site").hidden = false;
+    document.getElementById("siteTitle").textContent = `${s.id} · ${s.name || ""}`;
+    const bg = document.getElementById("siteBadges");
+    bg.replaceChildren(el("span", {className: "badge"}, el("span", {className: "sw", style: {background: groupColor(s.group)}}), `${s.igbp} · ${IGBP_NAME[s.igbp] || s.group}`),
+      el("span", {className: "badge", textContent: s.hub}), el("span", {className: "badge", textContent: s.res === "HR" ? "hourly raw data" : "half-hourly raw data"}));
+    document.getElementById("siteZip").textContent = s.zip;
+    const md = document.getElementById("siteMeta"); md.replaceChildren();
+    [["Location", `${(+s.lat).toFixed(3)}, ${(+s.lon).toFixed(3)}`], ["Elevation", s.elev != null ? s.elev + " m" : "n/a"],
+     ["Record", `${s.first}–${s.last} (${s.years.length} years with CO₂ data)`], ["Network", s.network || s.hub],
+     ["Principal investigators / team", (s.pi || "").split(";").join(", ")]].forEach(([k, v]) =>
+      md.append(el("div", {}, el("dt", {textContent: k}), el("dd", {textContent: v}))));
+    const c = document.getElementById("siteCite"); c.replaceChildren(el("b", {textContent: "Cite this site: "}), document.createTextNode(s.cite || "see citations_per_site.txt"));
+    if (scroll) document.getElementById("siteCard").scrollIntoView({behavior: "smooth", block: "start"});
+    const ts = document.getElementById("ts"); ts.style.opacity = 0.45;
+    fetch(`data/${encodeURIComponent(id)}.json`).then(r => r.json()).then(d => { if (selected === id) { cur = d; drawTS(); } })
+      .catch(() => { ts.style.opacity = 1; ts.replaceChildren(el("p", {className: "note", textContent: "Time series file not found for this site."})); });
+  }
+
+  function drawTS() {
+    const d = cur, ts = document.getElementById("ts");
+    ts.style.opacity = 1;
+    const start = new Date(d.start + "T00:00:00Z");
+    const x = Array.from({length: d.n}, (_, i) => new Date(start.getTime() + (i * 7 - 3) * 864e5));
+    const panels = PANELS.map(p => ({...p, series: p.series.filter(([k]) => d.v[k] && d.v[k].some(v => v != null))})).filter(p => p.series.length);
+    const n = panels.length, gapF = 0.045, h = (1 - gapF * (n - 1)) / n;
+    const txt = css("--text-2"), muted = css("--muted"), grid = css("--grid"), axis = css("--axis");
+    const colors = [css("--s1"), css("--s2")];
+    const traces = [], layout = {
+      height: 150 * n + 60, margin: {l: 64, r: 16, t: 28, b: 36}, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+      font: {family: "IBM Plex Sans, system-ui, sans-serif", size: 12, color: txt}, hovermode: "x unified", showlegend: false,
+      hoverlabel: {bgcolor: css("--surface"), bordercolor: css("--axis"), font: {color: css("--text")}}, annotations: [], bargap: 0.15,
+    };
+    panels.forEach((p, i) => {
+      const ax = i === 0 ? "" : String(i + 1);
+      const top = 1 - i * (h + gapF), bot = top - h;
+      layout["yaxis" + ax] = {domain: [bot, top], gridcolor: grid, zerolinecolor: p.zero ? muted : grid, zeroline: !!p.zero,
+        linecolor: axis, tickfont: {color: muted, size: 11}, title: {text: p.unit, font: {size: 11, color: muted}}, range: p.fixed, fixedrange: true};
+      layout["xaxis" + ax] = {anchor: "y" + ax, matches: i ? "x" : undefined, showticklabels: i === n - 1, gridcolor: grid, linecolor: axis,
+        tickfont: {color: muted, size: 11}, type: "date", showspikes: true, spikemode: "across", spikethickness: 1, spikecolor: muted, spikedash: "solid"};
+      // a panel title names only the series this site actually has
+      const label = p.series.length > 1 ? p.title : p.series.length === 1 && p.solo ? p.solo[p.series[0][0]] : p.title;
+      layout.annotations.push({text: `<b>${label}</b>`, xref: "paper", yref: "paper", x: 0, y: top, yanchor: "bottom", yshift: 4,
+        xanchor: "left", showarrow: false, font: {size: 12, color: css("--text")}});
+      p.series.forEach(([k, lab], j) => {
+        const col = d.cols[k] ? ` (${d.cols[k]})` : "";
+        traces.push(p.bar
+          ? {type: "bar", x, y: d.v[k], xaxis: "x" + ax, yaxis: "y" + ax, name: lab + col, marker: {color: colors[j]}, hovertemplate: "%{y:.1f} " + p.unit}
+          : {type: "scatter", mode: "lines", x, y: d.v[k], xaxis: "x" + ax, yaxis: "y" + ax, name: lab + col,
+             line: {color: colors[j], width: 1.6}, connectgaps: false, hovertemplate: "%{y:.2f} " + p.unit});
+      });
+    });
+    if (state.range) {
+      const end = x[x.length - 1], s0 = new Date(end); s0.setUTCFullYear(end.getUTCFullYear() - state.range);
+      layout.xaxis.range = [s0, end];
+    }
+    Plotly.react(ts, traces, layout, {responsive: true, displaylogo: false, modeBarButtonsToRemove: ["select2d", "lasso2d", "autoScale2d"]});
+  }
+  document.querySelectorAll(".seg").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll(".seg").forEach(o => o.setAttribute("aria-pressed", o === b));
+    state.range = +b.dataset.r; if (cur) drawTS();
+  }));
+
+  function restyle() {
+    paintSwatches();
+    if (tiles) tiles.setUrl(tileUrl());
+    Object.entries(markers).forEach(([id, m]) => m.setStyle(markerStyle(byId[id])));
+    drawAvail();
+    if (cur) drawTS();
+    if (selected) selectSite(selected, false);
+  }
+  fetch("build_info.json").then(r => r.json()).then(b => {
+    document.getElementById("buildInfo").textContent = `Viewer data built ${b.built} from ${b.n_sites} FLUXNET products.`;
+  }).catch(() => {});
+})();
+</script>
+</body>
+</html>
