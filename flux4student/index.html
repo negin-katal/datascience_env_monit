@@ -33,6 +33,7 @@
     /* sequential blue ramp (availability) */
     --q0: #cde2fb; --q1: #9ec5f4; --q2: #6da7ec; --q3: #3987e5; --q4: #256abf; --q5: #184f95; --q6: #0d366b;
     --empty: #f0efec;
+    --land: #e9e7df; --coast: #b9b7ad; --sea: #f7f9fa;
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
@@ -43,6 +44,7 @@
       --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --other: #6f6e69;
       --q0: #104281; --q1: #184f95; --q2: #1c5cab; --q3: #2a78d6; --q4: #5598e7; --q5: #86b6ef; --q6: #cde2fb;
       --empty: #262624;
+      --land: #2e2e2b; --coast: #55544f; --sea: #141413;
     }
   }
   :root[data-theme="dark"] {
@@ -53,6 +55,7 @@
     --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --other: #6f6e69;
     --q0: #104281; --q1: #184f95; --q2: #1c5cab; --q3: #2a78d6; --q4: #5598e7; --q5: #86b6ef; --q6: #cde2fb;
     --empty: #262624;
+      --land: #2e2e2b; --coast: #55544f; --sea: #141413;
   }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -90,7 +93,8 @@
           padding: 1rem 1.1rem 1.1rem; margin-bottom: 1.2rem; }
   .card h2 { font-size: 1.15rem; font-weight: 600; margin: 0 0 0.15rem; }
   .card .sub { color: var(--text-2); font-size: 0.9rem; margin: 0 0 0.8rem; }
-  #map { height: 480px; border-radius: 8px; background: var(--chip-off); }
+  #map { height: 480px; border-radius: 8px; background: var(--sea); }
+  .leaflet-container { background: var(--sea); }
   .leaflet-container { font-family: inherit; }
   .tip { font-size: 0.85rem; line-height: 1.35; }
   .tip b { font-weight: 600; }
@@ -357,15 +361,16 @@
   }
 
   // ---------- map ----------
-  let tiles;
-  function tileUrl() {
-    const dark = css("color-scheme") === "dark";
-    return `https://{s}.basemaps.cartocdn.com/${dark ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`;
-  }
+  // Basemap: country outlines bundled with the page (Natural Earth), so no tile service or API key is needed.
+  let land;
+  const landStyle = () => ({fillColor: css("--land"), fillOpacity: 1, color: css("--coast"), weight: 0.7});
   function buildMap() {
-    map = L.map("map", {worldCopyJump: true, minZoom: 1}).setView([30, 10], 2);
-    tiles = L.tileLayer(tileUrl(), {subdomains: "abcd", maxZoom: 12,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'}).addTo(map);
+    map = L.map("map", {worldCopyJump: false, minZoom: 1, maxZoom: 9, maxBounds: [[-85, -200], [85, 200]], maxBoundsViscosity: 0.8}).setView([30, 10], 2);
+    map.attributionControl.setPrefix(false).addAttribution('Country outlines: <a href="https://www.naturalearthdata.com/">Natural Earth</a>');
+    map.createPane("land").style.zIndex = 250;
+    fetch("world.json").then(r => r.json()).then(g => {
+      land = L.geoJSON(g, {pane: "land", interactive: false, renderer: L.canvas({pane: "land", padding: 0.5}), style: landStyle}).addTo(map);
+    });
     SITES.forEach(s => {
       const m = L.circleMarker([s.lat, s.lon], markerStyle(s));
       m.bindTooltip(() => siteTipNode(s), {direction: "top", offset: [0, -6], className: "tip"});
@@ -559,7 +564,7 @@
 
   function restyle() {
     paintSwatches();
-    if (tiles) tiles.setUrl(tileUrl());
+    if (land) land.setStyle(landStyle());
     Object.entries(markers).forEach(([id, m]) => m.setStyle(markerStyle(byId[id])));
     drawAvail();
     if (cur) drawTS();
