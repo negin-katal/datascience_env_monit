@@ -328,7 +328,7 @@
         SSH key setup
       </span>
       <h1>Connect to bwUniCluster</h1>
-      <p>A one-time setup so your laptop can log in to bwUniCluster with a key instead of a password — for Data Science &amp; Modelling.</p>
+      <p>A one-time setup so your laptop can log in to bwUniCluster with an SSH key — for Data Science &amp; Modelling. You still confirm with your OTP and service password, but at most once every 8 hours.</p>
       <div class="hero-meta">
         <span><strong>7 steps</strong> · once you're registered</span>
         <span><strong>~15 min</strong> hands-on</span>
@@ -343,6 +343,7 @@
         <div class="ln" style="animation-delay:.1s"><span class="prompt">you@laptop</span>:~$ ssh bwunicluster</div>
         <div class="ln" style="animation-delay:.6s dim">&nbsp;</div>
         <div class="ln dim" style="animation-delay:.9s">Enter passphrase for key '~/.ssh/bwunicluster':</div>
+        <div class="ln dim" style="animation-delay:1.15s">(OTP + service password, if not entered in the last 8 h)</div>
         <div class="ln dim" style="animation-delay:1.4s">Last login: Mon Sep 21 10:02:17 2026 from 93.184.x.x</div>
         <div class="ln" style="animation-delay:1.9s">&nbsp;</div>
         <div class="ln" style="animation-delay:2.1s"><span class="prompt">[fr_ab1234@uc3n990 ~]$</span> <span class="cursor"></span></div>
@@ -364,6 +365,8 @@
       <li><a href="#step-5">5. Enable it for the cluster</a></li>
       <li><a href="#step-6">6. Add a shortcut (optional)</a></li>
       <li><a href="#step-7">7. Connect</a></li>
+      <li><a href="#after-login">After you log in</a></li>
+      <li><a href="#troubleshooting">If it doesn't work</a></li>
     </ol>
   </nav>
 
@@ -376,7 +379,7 @@
         <div class="reg-step">
           <span class="reg-letter">A</span>
           <div>
-            <h3>Get your bwForCluster entitlement</h3>
+            <h3>Get your bwUniCluster entitlement</h3>
             <p>Requested from your university. Takes 2–3 days to come through, so do this first.</p>
             <a class="reg-link" href="https://uni-freiburg.de/forms-en/application-for-bwhpc-entitlements/" target="_blank" rel="noopener">
               Application form
@@ -411,11 +414,12 @@
 
     <section id="prereqs">
       <h2>Before you start</h2>
-      <p class="section-sub">Have these three ready — everything below assumes them.</p>
+      <p class="section-sub">Have these four ready — everything below assumes them.</p>
       <ul class="checklist">
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Your bwUniCluster registration is complete and your bwIDM account exists.</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> A terminal on your own laptop — macOS Terminal or the VS Code integrated terminal both work; they run the same shell.</li>
-        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Your two-factor / OTP method for bwIDM set up — you'll be asked for a code partway through.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Your bwUniCluster registration is complete, your bwIDM account exists and you have set your bwUniCluster <strong>service password</strong>.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> A terminal on your own laptop — macOS/Linux Terminal, Windows PowerShell or Git Bash, or the VS Code integrated terminal.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Your two-factor / OTP method for bwIDM set up — you'll need a code when adding the key and when you log in.</li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> A university network connection: on campus (eduroam) or, from home, the <strong>university VPN</strong>. The cluster only accepts logins from university networks.</li>
       </ul>
     </section>
 
@@ -425,14 +429,29 @@
         <div class="step-num">1</div>
         <div>
           <h3>Generate a key pair on your own machine</h3>
-          <p>Open your terminal and run this <strong>locally</strong> — not while already SSH'd into another machine.</p>
-          <pre class="code-block">ssh-keygen -t ed25519 -f ~/.ssh/bwunicluster -C <span class="var">"your_email@example.com"</span><button class="copy-btn" type="button">Copy</button></pre>
+          <p>Open your terminal and run this <strong>locally</strong> — not while already SSH'd into another machine. The first line creates the hidden <code class="inline">.ssh</code> folder if your laptop doesn't have one yet; without it, saving the key fails.</p>
+
+          <div class="tabs">
+            <div class="tab-buttons" role="tablist">
+              <button class="tab" role="tab" aria-selected="true" data-tab="mac">macOS / Linux / Git Bash</button>
+              <button class="tab" role="tab" aria-selected="false" data-tab="win">Windows (PowerShell)</button>
+            </div>
+            <div class="tab-panel active" data-panel="mac">
+              <pre class="code-block">mkdir -p ~/.ssh
+ssh-keygen -t ed25519 -f ~/.ssh/bwunicluster -C <span class="var">"your_email@example.com"</span><button class="copy-btn" type="button">Copy</button></pre>
+            </div>
+            <div class="tab-panel" data-panel="win">
+              <pre class="code-block">New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.ssh" | Out-Null
+ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\bwunicluster" -C <span class="var">"your_email@example.com"</span><button class="copy-btn" type="button">Copy</button></pre>
+            </div>
+          </div>
+
           <p><code class="inline">-t ed25519</code> sets the key algorithm — a fixed keyword, not anything personal. <code class="inline">-f</code> names the file so it won't collide with a key you already have. <code class="inline">-C</code> is just a label; your email works well.</p>
           <p>When prompted, <strong>set a real passphrase</strong> — don't leave it empty. This key can reach your compute allocation, and later you can use it to connect from VS Code too.</p>
           <p>Two files appear: <code class="inline">bwunicluster</code> (private — never share this) and <code class="inline">bwunicluster.pub</code> (public — this is the one you'll upload).</p>
           <div class="callout">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
-            <span><strong>Windows:</strong> this exact command works unchanged in PowerShell. If <code class="inline">ssh-keygen</code> isn't recognized, enable it via Settings → Apps → Optional Features → Add a feature → OpenSSH Client, then reopen PowerShell.</span>
+            <span><strong>Windows:</strong> use the PowerShell tab, which spells the path out with <code class="inline">$env:USERPROFILE</code> instead of <code class="inline">~</code>. In Git Bash, use the first tab. If <code class="inline">ssh-keygen</code> isn't recognized, enable it via Settings → Apps → Optional Features → Add a feature → OpenSSH Client, then reopen PowerShell.</span>
           </div>
         </div>
       </div>
@@ -471,10 +490,10 @@
         <div class="step-num">5</div>
         <div>
           <h3>Enable the key for bwUniCluster 3.0</h3>
-          <p>Adding a key to your account doesn't automatically switch it on for a service. Go to <strong>Services → bwUniCluster 3.0 → Enable SSH Key</strong>, and under "Set SSH Key" select the key you just added, then link/enable it.</p>
+          <p>Adding a key to your account doesn't automatically switch it on for a service. Under <strong>Registered Services</strong>, find bwUniCluster 3.0 and click <strong>Set SSH Key</strong>. Add the key you just uploaded and choose the usage type <strong>Interactive</strong> (the other type, "Command", is for automated jobs and needs admin approval).</p>
           <div class="callout">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg>
-            <span>Propagation to the login nodes can take up to <strong>~30 minutes</strong>. If your first login attempt fails, that's usually why — wait and try again before troubleshooting further.</span>
+            <span>If your first login attempt fails right after this, wait a few minutes and try again before troubleshooting further. Keys <strong>expire after 180 days</strong>; after that, repeat steps 2–5 with the same key file.</span>
           </div>
         </div>
       </div>
@@ -496,13 +515,13 @@
               <pre class="code-block">nano ~/.ssh/config<button class="copy-btn" type="button">Copy</button></pre>
               <p>Paste this in, save (<code class="inline">Ctrl+O</code>, Enter), then exit (<code class="inline">Ctrl+X</code>):</p>
               <pre class="code-block">Host bwunicluster
-    HostName bwunicluster.scc.kit.edu
+    HostName uc3.scc.kit.edu
     User <span class="var">&lt;your-bwidm-username&gt;</span>
     IdentityFile ~/.ssh/bwunicluster<button class="copy-btn" type="button">Copy</button></pre>
               <p>If <code class="inline">nano</code> isn't available, paste this whole block instead — it writes the file directly:</p>
               <pre class="code-block">cat &gt;&gt; ~/.ssh/config &lt;&lt; 'EOF'
 Host bwunicluster
-    HostName bwunicluster.scc.kit.edu
+    HostName uc3.scc.kit.edu
     User <span class="var">&lt;your-bwidm-username&gt;</span>
     IdentityFile ~/.ssh/bwunicluster
 EOF<button class="copy-btn" type="button">Copy</button></pre>
@@ -513,7 +532,7 @@ EOF<button class="copy-btn" type="button">Copy</button></pre>
 
 @"
 Host bwunicluster
-    HostName bwunicluster.scc.kit.edu
+    HostName uc3.scc.kit.edu
     User <span class="var">&lt;your-bwidm-username&gt;</span>
     IdentityFile ~/.ssh/bwunicluster
 "@ | Set-Content -Path "$env:USERPROFILE\.ssh\config" -Encoding ascii<button class="copy-btn" type="button">Copy</button></pre>
@@ -524,7 +543,7 @@ Host bwunicluster
             </div>
           </div>
 
-          <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.9rem;">Your username here is the short <strong>localUid</strong> shown on your bwIDM profile (e.g. <code class="inline">fr_ab1234</code>) — not your email address. Double-check the exact login node hostname in your registration confirmation email or the bwHPC wiki, since it can vary by cluster generation.</p>
+          <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.9rem;">Your username here is your university username with the prefix <code class="inline">fr_</code> (e.g. <code class="inline">fr_ab1234</code>), also shown as <strong>localUid</strong> on your bwIDM profile — not your email address. <code class="inline">uc3.scc.kit.edu</code> is the login address the bwHPC wiki recommends for bwUniCluster 3.0; <code class="inline">bwunicluster.scc.kit.edu</code> also works.</p>
         </div>
       </div>
 
@@ -533,10 +552,59 @@ Host bwunicluster
         <div>
           <h3>Connect</h3>
           <pre class="code-block">ssh bwunicluster<button class="copy-btn" type="button">Copy</button></pre>
-          <p>You'll be asked for the passphrase you set in step 1 — that just unlocks your local private key, it's not sent anywhere.</p>
+          <p>Up to three things are asked, in this order:</p>
+          <ol>
+            <li>the <strong>passphrase</strong> you set in step 1 — it unlocks your private key on your laptop and is not sent anywhere;</li>
+            <li>your <strong>OTP</strong> code;</li>
+            <li>your bwUniCluster <strong>service password</strong>.</li>
+          </ol>
+          <p>The OTP and service password are only asked if you haven't entered them in the last <strong>8 hours</strong>. After that, the key logs you in with just the passphrase.</p>
+          <div class="callout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9L2.5 17a2 2 0 001.7 3h15.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+            <span><strong>Working from home?</strong> Connect to the university VPN first. Without it the login simply hangs or times out.</span>
+          </div>
         </div>
       </div>
 
+    </section>
+
+    <section id="after-login">
+      <h2>After you log in</h2>
+      <p class="section-sub">You are now on a <strong>login node</strong>: a shared machine for preparing work, not for running it.</p>
+      <ul>
+        <li>Short commands, editing files, <code class="inline">git clone</code> and submitting jobs are fine here.</li>
+        <li>Heavy computations on a login node are stopped without warning. In the course we will run them as jobs.</li>
+      </ul>
+
+      <h3 style="font-size:1.05rem; margin:1.6rem 0 0.5rem;">Where to keep your data: workspaces</h3>
+      <p>Your home directory is backed up and meant for code and small files. Project data goes into a <strong>workspace</strong>, which is large but <strong>temporary and not backed up</strong>.</p>
+      <pre class="code-block"><span class="cm"># create a workspace called dsm for 60 days</span>
+ws_allocate <span class="var">dsm</span> 60
+
+<span class="cm"># list your workspaces and when they expire</span>
+ws_list
+
+<span class="cm"># extend it by another 60 days before it expires</span>
+ws_extend <span class="var">dsm</span> 60
+
+<span class="cm"># get a calendar reminder for the expiry date</span>
+ws_send_ical <span class="var">dsm</span> <span class="var">you@example.com</span><button class="copy-btn" type="button">Copy</button></pre>
+      <div class="callout">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg>
+        <span>A workspace lasts <strong>60 days</strong> and can be extended <strong>3 times</strong>, to at most <strong>240 days</strong> in total. When it expires, its files are removed and can only be restored for a short time. You also get daily emails in the last 7 days. Keep code in Git and anything you cannot recreate somewhere backed up.</span>
+      </div>
+      <p>To leave the cluster, type <code class="inline">exit</code>.</p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>If it doesn't work</h2>
+      <ul>
+        <li><strong>Login hangs or times out:</strong> you are probably off campus without the VPN.</li>
+        <li><strong>"Permission denied (publickey…)":</strong> check that the key is set to <em>Interactive</em> for bwUniCluster 3.0 (step 5), the username starts with <code class="inline">fr_</code>, and the <code class="inline">IdentityFile</code> path matches your key file.</li>
+        <li><strong>"Saving key failed: No such file or directory":</strong> the <code class="inline">.ssh</code> folder is missing; run the first line of step 1.</li>
+        <li><strong>Asked for OTP and password every time:</strong> normal if more than 8 hours have passed since you last entered them.</li>
+        <li><strong>Worked last semester, not now:</strong> your key may have expired after 180 days; register it again (steps 2–5).</li>
+      </ul>
     </section>
   </main>
 </div>
@@ -545,10 +613,12 @@ Host bwunicluster
   <div class="footer-inner">
     <h2 style="font-size:1.15rem; margin:0 0 1rem;">Quick reference</h2>
     <pre class="cheat mono">
+<span class="step-tag">1</span>  mkdir -p ~/.ssh
 <span class="step-tag">1</span>  ssh-keygen -t ed25519 -f ~/.ssh/bwunicluster -C "you@example.com"
-<span class="step-tag">2</span>  cat ~/.ssh/bwunicluster.pub          <span style="color:var(--code-muted)"># → paste into bwIDM</span>
-<span class="step-tag">6</span>  nano ~/.ssh/config                   <span style="color:var(--code-muted)"># → add Host block</span>
-<span class="step-tag">7</span>  ssh bwunicluster</pre>
+<span class="step-tag">2</span>  cat ~/.ssh/bwunicluster.pub          <span style="color:var(--code-muted)"># → paste into bwIDM, set as Interactive</span>
+<span class="step-tag">6</span>  nano ~/.ssh/config                   <span style="color:var(--code-muted)"># → add Host block (uc3.scc.kit.edu)</span>
+<span class="step-tag">7</span>  ssh bwunicluster                     <span style="color:var(--code-muted)"># off campus: VPN first</span>
+<span class="step-tag">+</span>  ws_allocate dsm 60 · ws_list · ws_extend dsm 60</pre>
     <p class="credit">Data Science &amp; Modelling — SSH connection guide for bwUniCluster.</p>
   </div>
 </footer>
@@ -585,15 +655,17 @@ Host bwunicluster
     document.body.removeChild(ta);
   }
 
-  // Tabs for step 6
-  var tabs = document.querySelectorAll('.tab');
-  tabs.forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      tabs.forEach(function (t) { t.setAttribute('aria-selected', 'false'); });
-      tab.setAttribute('aria-selected', 'true');
-      var target = tab.getAttribute('data-tab');
-      document.querySelectorAll('.tab-panel').forEach(function (panel) {
-        panel.classList.toggle('active', panel.getAttribute('data-panel') === target);
+  // Tabs (each .tabs group switches independently)
+  document.querySelectorAll('.tabs').forEach(function (group) {
+    var tabs = group.querySelectorAll('.tab');
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        tabs.forEach(function (t) { t.setAttribute('aria-selected', 'false'); });
+        tab.setAttribute('aria-selected', 'true');
+        var target = tab.getAttribute('data-tab');
+        group.querySelectorAll('.tab-panel').forEach(function (panel) {
+          panel.classList.toggle('active', panel.getAttribute('data-panel') === target);
+        });
       });
     });
   });
