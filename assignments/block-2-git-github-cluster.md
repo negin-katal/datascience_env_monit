@@ -212,10 +212,10 @@ cd $(ws_find envmon)
 sbatch $HOME/datascience_env_monit/jobs/hello_R.sh
 squeue -u $USER
 ls
-cat hello_R_<jobid>.out
+cat hello_R_*.out
 ```
 
-`sbatch` prints `Submitted batch job 1234567`. In `squeue`, `PD` means waiting and `R` means running. When the list is empty, the job has finished. Replace `<jobid>` with your job number. Python route: `jobs/hello_py.sh` and `hello_py_<jobid>.out`.
+`sbatch` prints `Submitted batch job 1234567`. In `squeue`, `PD` means waiting and `R` means running. When the list is empty, the job has finished. Type the `*` exactly as shown: it matches your job number. Do not paste text in angle brackets like `<jobid>` into the terminal, because the shell reads `<` as a redirect and reports a missing file. Python route: `jobs/hello_py.sh` and `hello_py_*.out`.
 
 ### B6. Check the result
 
@@ -255,7 +255,7 @@ The cluster is a place to compute, not a place to keep things. Know where each f
 Extend a workspace before it expires with `ws_extend envmon 60`. This works up to three times. Copy results you must keep to your laptop, running this on the laptop:
 
 ```bash
-scp bwunicluster:<workspace path>/hello_R_<jobid>.out .
+scp "bwunicluster:<workspace path>/hello_R_*.out" .
 ```
 
 ### C1. Document your storage
