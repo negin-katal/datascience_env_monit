@@ -1,0 +1,635 @@
+---
+title: "Time series analysis"
+author: "Markus Weiler"
+date: "26/11/2026"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Outline
+
+In this lesson, we will learn how to:
+
+-   smooth data
+-   analyze temporal dependence/autocorrelation
+-   assess stationarity vs. non-stationarity
+-   perform trend and change point analyses
+-   use time series models
+
+In order to do this, we will use three different climatic time series from Freiburg at hourly resolution:
+
+1.  temperature (2m above ground)
+2.  precipitation
+
+More climate time series for Germany can be downloaded from the Climate Data Center (CDC): <https://cdc.dwd.de/portal/>. Streamflow data can be ordered from the Landesanstalt für Umwelt Baden-Württemberg (LUBW): <https://www.lubw.baden-wuerttemberg.de/wasser/pegel-und-datendienst> or downloaded from the 'Pegelportal': <http://www.pegelportal.de/datendownload/>. 
+
+## Load some useful packages and define different function
+
+```{r, results='hide', message=FALSE}
+### time series analysis
+library(zoo)
+### trend tests
+library (trend)
+### change point tests
+library(changepoint)
+
+```
+
+## Read in and visualize time series Freiburg
+
+### Temperature
+
+```{r,fig.height = 5, fig.width = 10}
+
+## read DWD hourly temperature data
+fileVector <- "data/stundenwerte_TU_01443_19510101_20251231_hist/produkt_tu_stunde_19510101_20251231_01443.txt"
+data_T <-read.table(fileVector,sep=';', header=TRUE, row.names = NULL)
+
+### look at data structure
+head(data_T)
+### format date
+data_T$Date <- as.POSIXct(as.character(data_T$MESS_DATUM),format="%Y%m%d%H",tz = "CET")
+
+# replace missing values
+wo_na <- which(data_T$TT_TU == -999)
+if (length(wo_na) > 1) {data_T$TT_TU[wo_na] <- NA}
+#if (length(wo_na) > 1) {data$TT_TU[wo_na] <- 0}  # depending on the further analysis
+
+### look at time series of 2m temperature
+par(mfrow=c(1,2))
+plot(data_T$Date[1:365*24],data_T$TT_TU[1:365*24],type='l',xlab='Time (day)', 
+     ylab='Temperature (°C)',main='One year')
+### zoom in and just look at one month
+plot(data_T$Date[(200*24):(230*24)],data_T$TT_TU[(200*24):(230*24)],type='l',
+     xlab='Time (day)', ylab='Temperature (°C)',main='One month')
+```
+
+Which features do we notice?
+
+### Precipitation
+
+```{r,fig.height = 5, fig.width = 10}
+### read in precipitation data
+data_P <- read.table('data/tageswerte_RR_01443_18740101_20251231_hist/produkt_nieder_tag_18740101_20251231_01443.txt',
+                     header=TRUE, sep=';')
+### look at data structure
+head(data_P)
+### format date
+data_P$Date <- as.POSIXct(as.character(data_P$MESS_DATUM),
+                          format="%Y%m%d",tz = "CET")
+### Replace missing values -999 with NA
+data_P$RS[which(data_P$RS==-999)] <- NA
+### look at time series of precipitation
+par(mfrow=c(1,2))
+### Whole time series
+plot(data_P$Date,data_P$RS,type='l',xlab='Time (day)',
+     ylab='Precipitation (mm)',main='Whole record')
+### one year
+plot(data_P$Date[1:365],data_P$RS[1:365],type='l',
+     xlab='Time (day)', ylab='Precipitation (mm)',main='One year')
+```
+
+What properties do we notice for precipitation? How are they different from those of temperature?
+
+## Using time series objects provides some benefits for further analysis
+
+```{r,fig.height = 5, fig.width = 10}
+# defining a time series object
+temp <- ts(data=data_T$TT_TU, start=c(1951, 1,1), frequency=366*24)
+
+# example plots
+par(cex=1.3)
+
+plot(temp, ylab="Temperature",main='Whole record')
+
+plot(ts(data=data_T$TT_TU[1:(365*24)], start=c(2008, 1,1), frequency=365*24), ylab="Temperature",main='Year 2018')
+
+plot(ts(data=data_T$TT_TU[(90*24):(120*24)], start=c(2018, 4,1), frequency=365*24), ylab="Temperature")
+
+```
+
+## Definition of a time series
+
+A time series is a sequence of random variables, $x_1$, $x_2$, $x_3$, ... , where the random variable $x_1$ denotes the value taken by the series at the first time point, the variable $x_2$ denotes the value for the second time period, $x_3$ denotes the value for the third time period and so on. Depending on the phenomena, time series show varying degrees of smoothness, which depends on how values at different time steps are correlated, i.e. how a value at time step $t$, $x_t$, is related to values at previous time steps e.g. $x_{t-1}$ or $x_{t-2}$.
+
+
+### generate daily max/min/avg values
+
+```{r, results='hide', message=FALSE}
+max.na <- function(x,...){if (all(is.na(x))){NA} else {max(x, na.rm = TRUE)}}
+min.na <- function(x,...){if (all(is.na(x))){NA} else {min(x, na.rm = TRUE)}}
+mean.na <- function(x,...){if (all(is.na(x))){NA} else {mean(x, na.rm = TRUE)}}
+
+date <- strptime(as.character(data_T$MESS_DATUM), format = "%Y%m%d%H")
+daydate <- format(date, "%Y-%m-%d")
+max_day <- aggregate(data_T$TT_TU, list(date = daydate), max.na)
+min_day <- aggregate(data_T$TT_TU, list(date = daydate), min.na)
+mean_day <- aggregate(data_T$TT_TU, list(date = daydate), mean.na)
+
+day <- merge(max_day, min_day, by ="date")
+day <- merge(day, mean_day, by ="date")
+names(day) <- c("date", "max", "min", "avg")
+day$date <- as.Date(day$date)
+
+```
+
+## Smoothing
+
+We here discuss four approaches that can be used to smooth time series: moving averages, kernel smoothing, smoothing splines, locally estimated scatterplot smoother (LOESS), the latter three of which are called non-parametric regression approaches.
+
+### Moving averages
+
+Probably the simplest way of smoothing a time series is by using a moving average approach. The moving average over a window of duration $w$ can be computed either in a left-aligned, right-aligned, or centered way. The centered moving average is computed by averaging the values in a window around the time step of interest. It is defined as $m_t = \frac{x_{t-w/2}+...+x_t+...+x_{t+w/2}}{w}$. Let's look at an example: Compute moving average of 5-6 years of our temperature time series. Smooth over a monthly and annual window.
+
+```{r,fig.height = 5, fig.width = 10}
+
+plot(day$date, day$min, type="l", xlim=as.Date(c("2000-01-01", "2010-12-31")), ylab="Daily Min Temperature", col="grey", xlab="Days")
+
+lines(day$date, filter(day$min, sides=2, rep(1,7)/7),col="red",lwd=1) # movinge Average (weekly)
+lines(day$date, filter(day$min, sides=2, rep(1,31)/31),col="green",lwd=2) # movinge Average (monthly)
+lines(day$date, filter(day$min, sides=2, rep(1,365)/365),col="violet",lwd=2) # movinge Average (annual)
+
+```
+
+### Kernel smoothing
+
+Kernel smoothing is a more versatile smoothing approach than the simple moving average. It also uses a moving window that moves along $x$ to predict $\hat{g}(x)$ in a non-parametric way but this window assigns different weights to different parts of the window. A kernel estimator is defined by a kernel function $k(x)$ and a bandwidth parameter $\lambda$ and is given by
+
+$\hat{g}(x)=\frac{1}{n}\sum_{i}\frac{1}{\lambda}k(\frac{x_i-x}{\lambda})Y_i$,
+
+where $n$ is the length of the time series. The key challenge in kernel estimation is choosing $\lambda$, which determines the amount of smoothing.
+
+Let's apply different kernel smoothers to our temperature data set. Note that in addition to the bandwidth, also the form of the kernel can be chosen. We here apply a box and a normal kernel.
+
+```{r,fig.height = 5, fig.width = 10}
+### define time series for three years
+ts <- day$max[1:(3*365)]
+time <- 1:(3*365)
+### plot
+plot(time,ts,type='l',xlab='Time (days)', ylab='Max Daily Temperature (°C)')
+### apply kernel smoothing
+### weak smoothing with bandwidth = 5, default is a box kernel
+k0 <- ksmooth(time,ts, bandwidth=5,x.points=time)
+lines(k0,col='red',lwd=2)
+### some more smoothing with bandwidth = 30 
+k1 <- ksmooth(time,ts, bandwidth=30,x.points=time)
+lines(k1,col='orange',lwd=3)
+### use a different type of kernel: normal
+k2 <- ksmooth(time,ts, bandwidth=30,x.points=time, kernel='normal')
+lines(k2,col='blue',lwd=2)
+### legend
+legend('bottomleft',legend=c('Raw','bw = 5, box','bw = 30, box', 'bw =30, normal'),
+       col=c('black','red','orange','blue'),lty=1)
+```
+
+The disadvantage of kernel smoothers is that locally-weighted averages can be strongly biased on the boundaries of the domain because of the asymmetry of the kernel in that region. By fitting straight lines rather than constants locally, we can remove some of this bias.
+
+### Local polynomial regression
+
+Locally weighted regression solves a separate weighted least squares problem at each target point $x_0$:
+
+$\text{min}_{\alpha(x_0),\beta(x_0)}\sum_{i=1}^{N}K_\gamma(x_0,x_i) [y_i - \alpha(x_0) - \beta(x_0)x_i]^2$. We fit an entire linear model to the data in the region but only use it to evaluate the fit at the single point $x_0$. Instead of using linear fits, we can use local polynomial fits of any degree $d$.
+
+Let's have a look out our temperature data again
+
+```{r,fig.height = 5, fig.width = 10}
+### plot
+plot(time,ts,type='l',xlab='Time (days)', ylab='Max Daily Temperature (°C)')
+### apply local polynomial regression
+### choose span of 0.05
+l0 <- loess(ts ~ time, span=0.05)
+lines(l0$x ,l0$fitted,col='red',lwd=3)
+### increase span to increase smoothing
+l1 <- loess(ts ~ time, span=0.1)
+lines(l1$x ,l1$fitted,col='orange',lwd=2)
+### legend
+legend('bottomleft',legend=c('Raw','span = 0.05','span = 0.1'),
+       col=c('black','red','orange','blue'),lty=1)
+```
+
+### Smoothing splines
+
+Smoothing splines allow for a very flexible description of $g(x)$ thanks to a smoothing parameter $\lambda$ and a penalty function $J$ measuring the smoothness of $g$:
+
+$\hat{g} = \text{argmin} \sum_{i=1}^n (y_i-g(x_i))^2+\lambda J(g)$.
+
+The smoothing spline is found by formulating a basis for the splines and then applying ridge regression.
+
+Back to the temperature data.
+
+```{r,fig.height = 5, fig.width = 10}
+### plot
+plot(time,ts,type='l',xlab='Time (day)', ylab='Max Daily Temperature (°C)')
+### apply smoothing splines
+s0 <- smooth.spline(time, ts)
+lines(s0,col='red',lwd=3)
+### legend
+legend('bottomleft',legend=c('Raw','Smoothing spline'),col=c('black','red'),lty=1)
+```
+
+## Temporal dependence/autocorrelation
+
+Time series data show temporal dependence, i.e. the independent and identically distributed (iid) assumption is violated. This temporal autocorrelation can be measured by the (Pearson) correlation of time series observations ($x_t$) with observations at previous time steps (lags, $t-l$). Autocorrelation is typically calculated at different lags to find out at which time steps autocorrelation is strongest/weakest. Such an analysis can be performed using the autocorrelation function (ACF).
+
+```{r,fig.height = 5, fig.width = 10}
+# Autocorrelation
+# replace missing values
+wo_na <- which(is.na(day$min))
+if (length(wo_na) > 0) {day$min[wo_na] <- 0}
+wo_na <- which(is.na(day$max))
+if (length(wo_na) > 0) {day$max[wo_na] <- 0}
+wo_na <- which(is.na(day$avg))
+if (length(wo_na) > 0) {day$avg[wo_na] <- 0}
+
+day$days <- seq(1,length(day$min))
+
+acf(day$min, 365, main="Daily Minimum Temperature")
+
+loes <- loess(day$min ~ day$days, span=0.01)
+acf(predict(loes), 100, main="Loess Minimum Temperature")
+acf(day$min-predict(loes), 100, main="Detrended Minimum Temperature")
+
+
+#acf((day$max-day$min), 100, main="Daily Temperature Amplitude")
+
+plot(day$max-day$min, type="l", xlim=c(0,2000), ylim=c(0,25), ylab="Daily Temperature Amplitude", col="grey", xlab="Days")
+
+
+ccf(day$max, day$min, 100, main="CCF: Daily Min and Max Temperature")
+```
+
+Another tool to understand the temporal dependence structure of a time series is the partial autocorrelation (PACF). The PACF at lag $l$ is the autocorrelation between $x_t$ and $x_{t-l}$ that is not accounted for by lags 1 through $l-1$.
+
+Back to our example data.
+
+```{r,fig.height = 5, fig.width = 10}
+### temperature
+### compute autocorrelation fuction
+pacf_T <- pacf(day$min,plot=FALSE, lag.max=365)
+### plot acf
+par(mfrow=c(1,2))
+plot(pacf_T,main='Daily Min Temperature', ylim=c(-.1,.2))
+
+pacf_P <- pacf(day$max,plot=FALSE, lag.max=365,na.action = na.pass)
+plot(pacf_P,main='Daily Max Temperature', ylim=c(-.1,.2))
+```
+
+We are interested in the bars exceeding the (dashed) significance limits, which indicate that the correlation for that lag doesn't equal zero.
+
+Which lags do you consider important given the pacf plots for temperature and precipitation?
+
+Given the information provided by the pacf plot, we can infer important time series components:
+
+-   Significant correlations at the first or second lag, followed by correlations that are not significant indicate an autoregressive term in the data.
+-   A large bar at lag 1 that decreases after a few lags indicates a moving average term in the data.
+-   A large bar at lag 1 followed by a damped wave that alternates between positive and negative correlations indicates a higher order moving average term in the data.
+
+### Decompositions: time series characteristics
+
+Time series have some typical characteristics including random, seasonal, and trend components. We can get a first impression of these components by decomposing the time series. We apply such decomposition to our average daily temperature data set.
+
+```{r,fig.height = 8, fig.width = 10}
+### time series has to be converted to a time series object using ts() before decomposition
+ts_dec <- decompose(ts(day$avg,start=c(1951, 1,1),frequency=365))
+### plot decomposed time series
+plot(ts_dec)
+# same for a shorter period
+ts_dec <- decompose(ts(day$avg,start=c(2010, 1,1),end=c(2022, 12,31),frequency=365))
+plot(ts_dec)
+
+```
+
+## Stationarity vs. non-stationarity
+
+Stationary time series have a constant long-term mean and a constant variance independent of time. In contrast, non-stationary time series have a variable mean and/or variance that changes in time.
+
+For a strictly stationary time series, the probabilistic behavior of $x_{t1}, x_{t2},...,x_{tk}$ is identical to the one of a time-shifted set $x_{t1+h}, x_{t2+h},...,x_{tk+h}$ for any collection of time points $t_1,t_2,...,t_k$, for any number $k=1,2,...$, and for any shift $h=0,\pm1,\pm2$. This means that the distribution functions for different shifted time series must be identical. This is a very strong assumption and for practical applications, we often use a milder assumption called weak stationarity. Weak stationarity only imposes conditions on the first two moments of the time series: (1) the mean value $m_t$ is constant and does not depend on time $t$ and (2) the covariace function $\gamma(s,t)$ depends on $s$ and $t$ only through their difference $|s-t|$ or time lag $h$. I.e. $\gamma$ only depends on the lag and not on $t$ itself. A time series not fulfilling these two criteria is called non-stationary.
+
+Non-stationary time series are quite common in the geosciences/hydrology where non-stationarities arise from seasonal cycles, long-term trends induced e.g. because of climate change, or step-changes caused by human-intervention in the water cycle e.g. through reservoir operation.
+
+Let's look at annual temperature data (min, mean, max) to explore possible trends.
+
+```{r, echo=FALSE ,fig.height = 5, fig.width = 8}
+#  Annual data
+# generate annual mean/max/min values 
+anudate <- format(date, "%Y")
+max_year <- aggregate(data_T$TT_TU, list(date = anudate), max.na)
+min_year <- aggregate(data_T$TT_TU, list(date = anudate), min.na)
+avg_year <- aggregate(data_T$TT_TU, list(date = anudate), mean.na)
+
+year <- merge(max_year, min_year, by ="date")
+year <- merge(year, avg_year, by ="date")
+names(year) <- c("date", "max", "min", "avg")
+year$date <- as.numeric(year$date)
+
+plot(year$date, year$min,  type="o", col="blue", ylab="Annual Minimum Temperature", xlab="Years")
+plot(year$date, year$max, type="o", col="red", ylab="Annual Maximum Temperature", xlab="Years")
+plot(year$date, year$avg, type="o", col="green", ylab="Annual Average Temperature", xlab="Years")
+```
+
+What do we notice?
+
+These types of non-stationarity patterns need to be considered when fitting statistical distributions and models.
+
+## Trend and change point analyses
+
+Besides seasonality, which we can e.g. consider by doing season-specific analyses, there are two main types of non-stationarities: long-term trends and abrupt shifts, i.e. break points. Sometimes, as in the Drance example above, these non-stationarities are obvious and easily detected by eye. However, othertimes, changes are more subtle and need to be confirmed by statistical tests. Change point tests identify the timing of shifts while trend tests identify and in some cases quantify gradual changes. We here want to introduce some of the tests available and illustrate their application on our temperature examples.
+
+### Trend tests
+
+There are parametric and non-parametric trend tests. While parametric tests usually focus on linear relationships, non-parametric tests can also detect monotonic trends which are not necessarily linear. We are going to look at one parametric and one non-parametric trend test example: linear regression and the Mann-Kendall test which is often used in combination with Sen's slope to define the magnitude of trends.
+
+```{r, fig.height = 5, fig.width = 10}
+
+### Trend analysis
+
+summary(lm_min <- lm(year$min ~ year$date))
+summary(lm_max <- lm(year$max ~ year$date))
+summary(lm_avg <- lm(year$avg ~ year$date))
+
+year$avg_lm <- fitted(lm_avg)
+year$min_lm <- fitted(lm_min)
+year$max_lm <- fitted(lm_max)
+
+# Plot and prediction intervals for average
+
+new <- data.frame(x = seq(1950, 2030, length.out=length(year$date)))
+
+pred_avg_c <- predict(lm_avg, new, interval = "confidence")
+pred_avg_p <- predict(lm_avg, new, interval = "prediction")
+
+matplot(new$x, cbind(pred_avg_c, pred_avg_p[,-1]),
+        lty = c(1,2,2,3,3), col = "red", type = "l", ylab="Temperature", xlab="Years", main="Annual Average Temperature")
+points(year$date, year$avg, type="o", col="black")
+mtext(paste(" Trend Slope = ",format(summary(lm_avg)$coefficients[2]*100, digits=3)," K/100years" ), side=3, adj=0, line=-1)
+mtext(paste(" p-Value = ",format(summary(lm_avg)$coefficients[8], digits=3) ), side=3, adj=0, line=-2)
+
+# Plot and prediction intervals for min
+
+pred_avg_c <- predict(lm_min, new, interval = "confidence")
+pred_avg_p <- predict(lm_min, new, interval = "prediction")
+
+matplot(new$x, cbind(pred_avg_c, pred_avg_p[,-1]),
+        lty = c(1,2,2,3,3), col = "red", type = "l", ylab="Temperature", xlab="Years", main="Annual Minimum Temperature")
+points(year$date, year$min, type="o", col="black")
+mtext(paste(" Trend Slope = ",format(summary(lm_min)$coefficients[2]*100, digits=3)," K/100years" ), side=3, adj=0, line=-1)
+mtext(paste(" p-Value = ",format(summary(lm_min)$coefficients[8], digits=3) ), side=3, adj=0, line=-2)
+
+
+# Plot and prediction intervals for max
+
+pred_avg_c <- predict(lm_max, new, interval = "confidence")
+pred_avg_p <- predict(lm_max, new, interval = "prediction")
+
+matplot(new$x, cbind(pred_avg_c, pred_avg_p[,-1]),
+        lty = c(1,2,2,3,3), col = "red", type = "l", ylab="Temperature", xlab="Years", main="Annual Maximum Temperature")
+points(year$date, year$max, type="o", col="black")
+mtext(paste(" Trend Slope = ",format(summary(lm_max)$coefficients[2]*100, digits=3)," K/100years" ), side=3, adj=0, line=-1)
+mtext(paste(" p-Value = ",format(summary(lm_max)$coefficients[8], digits=3) ), side=3, adj=0, line=-2)
+
+```
+
+### Non-parametric Trend tests
+
+Now we look at the non-paramtetric trends
+
+```{r, fig.height = 5, fig.width = 10}
+#   Nonlinear Trend Analysis (Mann-Kendall) for max 
+#trend <- mann.kendall(year$date,year$max)
+
+### Mann-Kendall and Sen's slope
+### Use MK test to test whether there is a trend
+mk_Q1 <- mk.test(year$max)
+### look at output
+mk_Q1
+### p-value again < 0.05, which means that H0 of no change can be rejected
+
+### to quantify the magnitude of change, we need another test
+### Use Sen's slope to see how strong the trend is.
+sen_Q1 <- sens.slope(year$max)
+### look at output
+sen_Q1
+
+
+plot(year$date, year$max, type="o", col="black", ylab="Max. Temperature", xlab="Years", xlim=c(1950,2030))
+abline(mean(year$max)-mean(year$date)*sen_Q1$estimates, sen_Q1$estimates, col="green")
+#abline(trend$intercept, trend$slope, col="blue")
+abline(lm_max , col="red")
+
+
+#loess
+
+loes <- loess(year$max ~ year$date)
+points(year$date, predict(loes),  typ="l", lwd=2)
+```
+### Change point tests
+
+There exist both parametric and non-parametric change point tests to identify changes in mean and/or variance. Parametric methods assume the data are independent and identically distributed, and can be described by a particular statistical distribution, which is very often the normal distribution. However, geo-environmental data may not necessarily be normally distributed. Nonparametric methods still have the iid assumption but do not assume a particular distribution and are more robust towards outliers. Available tests include the pruned exact linear time method (PELT), binary segmentation, the Pettitt test, or the Mann-Whitney test for change points. We are here going to apply the Pettitt and AMOC tests to our Drance time series.
+
+```{r,fig.height = 4, fig.width = 8}
+### use functions from package 'trend' and 'changepoint'
+### apply non-parametric Pettitt test to test for change in mean
+### only identifies most likely change point
+### H0: no change, HA: change
+cp_pettit <- pettitt.test(year$avg)
+### look at output
+cp_pettit 
+### visualize most likely change point identified
+par(mfrow=c(1,1))
+plot(year$date,year$avg,type='l',xlab='Time (year)',
+     ylab='Mean Annual Temperature (°C)')
+abline(v=year$date[cp_pettit$estimate],col='red')
+
+### alternative test: At Most One Changepoint (AMOC) 
+cp_AMOC <- cpt.mean(year$avg)
+abline(v=year$date[cp_AMOC@cpts[1]],col='orange')
+
+```
+
+In this case, both tests identify the same change point. In more complex cases, however, test results might be test dependent and the application of several tests to the same problem is recommended.
+
+Now that we know how to describe time series, let's do some modeling.
+
+## Time series models
+
+A suitable time series model will allow us to forecast future values of a time series given current and past observations. I.e. given $x_t$ and potentially earlier observations such as $x_{t-1}$, we want to predict the value of $x_{t+1}$. An example for such a prediction problem is that we want to forecast tomorrow's temperature. The temporal dependence structure of the past temperature observations will allow us to derive a model lending itself to forecasting. Common approaches for modeling univariate time series are autoregressive (AR) and moving average (MA) models, which are often combined to ARMA models.
+
+### ARMA
+
+ARMA, i.e. autoregressive moving-average models are a large family of models used to model time series. They consist of an autoregressive (AR) and a moving average (MA) component. We look at these two types of models in turn.
+
+**AR:** An autoregressive model is a linear regression of the current value of the series against $p$ past values of the series $x_{t-1}$, $x_{t-2}$,...,$x_{t-p}$.
+
+The extent to which it might be possible to forecast a data series from its own past values can be assessed by looking at the autocorrelation and the partial autocorrelation function. The number of lags with significant PACFs indicates how many AR terms $p$ are needed to explain the autocorrelation in a time series.
+
+Let's look at what AR processes of different orders look like:
+
+```{r,fig.height = 6, fig.width = 10}
+par(mfrow=c(2,2))
+### simulate a time series of n=100 from an AR(1) process
+ar_1 <- arima.sim(model=list(order=c(1,0,0),ar=0.7),n=100)
+plot(ar_1,ylab='Value',main='AR(1)')
+### plot the corresponding PACF
+pacf(ar_1,main='AR(1)')
+### increase lag dependence
+ar_4 <- arima.sim(model=list(order=c(4,0,0),ar=c(0.7, 0.2, -0.1, -0.3)),n=100)
+plot(ar_4,ylab='Value',main='AR(4)')
+pacf(ar_4,main='AR(4)')
+```
+
+What do you notice when you compare the higher order model AR(4) to the lower order model AR(1)?
+
+An autoregressive model of order $p$, AR(p) is defined as $x_t = \phi_1x_{t-1}+\phi_2x_{t-2}+...+\phi_px_{t-p}+\omega_t$, where $\phi_1,\phi_2,...,\phi_p$ are constants and $\omega_t$ is a white noise series with mean zero and variance $\sigma_\omega^2$. This notation assumes that the mean of $x_t$ is zero. If this is not the case, $x_t$ can be replaced by $x_t-\mu$ or we can write
+
+$x_t = \alpha+\phi_1x_{t-1}+\phi_2x_{t-2}+...+\phi_px_{t-p}+\omega_t$,
+
+where $\alpha=\mu(1-\phi_1-...-\phi_p).$
+
+The parameter $\phi$ determines how smooth the AR process is. Let's return to our AR(1) model and look at the effect of changing $\phi$.
+
+```{r,fig.height = 5, fig.width = 10}
+par(mfrow=c(2,2))
+### simulate a time series of n=100 from an AR(1) process
+ar_1 <- arima.sim(model=list(order=c(1,0,0),ar=0.1),n=100)
+plot(ar_1,ylab='Value',main='AR(1) 0.1')
+### plot the corresponding PACF
+pacf(ar_1,main='AR(1) 0.1')
+### increase phi
+ar_1 <- arima.sim(model=list(order=c(1,0,0),ar=0.9),n=100)
+plot(ar_1,ylab='Value',main='AR(1) 0.9')
+### plot the corresponding PACF
+pacf(ar_1,main='AR(1) 0.9')
+```
+
+What do we notice as we increase $\phi$ from 0.1 to 0.9?
+
+$\phi$ does not need to be positive. What does a time series look like that has a negative $\phi$?
+
+```{r,fig.height = 6, fig.width = 10}
+par(mfrow=c(2,2))
+### simulate a time series of n=100 from an AR(1) process
+ar_1 <- arima.sim(model=list(order=c(1,0,0),ar=0.9),n=100)
+plot(ar_1,ylab='Value',main='AR(1) 0.1')
+### plot the corresponding PACF
+pacf(ar_1,main='AR(1) 0.1')
+### increase phi
+ar_1 <- arima.sim(model=list(order=c(1,0,0),ar=-0.9),n=100)
+plot(ar_1,ylab='Value',main='AR(1) -0.9')
+### plot the corresponding PACF
+pacf(ar_1,main='AR(1) -0.9')
+```
+
+**MA:** A moving average process of order $q$, MA(q), is a weighted sum of the current random error $\omega_t$ plus the $q$ most recent errors and is defined as
+
+$x_t=\omega_t+\theta_1\omega_{t-1}+\theta_2\omega_{t-2}+...+\theta_q\omega_{t-q}$ , where $\omega_1,\omega_2,...,\omega_q$ are parameters that determine the overall pattern of the process.
+
+We can use the ACF to determine the order of the MA describing our data (remember, we used the PACF to determine the order of the AR). The number of lags where the ACF is significant indicates the MA order $q$.
+
+We look at MA processes of different order and with different parameter strengths for $\omega$.
+
+```{r,fig.height = 6, fig.width = 10}
+par(mfrow=c(2,3))
+### MA(1)
+ma_1 <- arima.sim(model=list(order=c(0,0,1),ma=0.5),n=100)
+plot(ma_1,ylab='Value',main='MA(1) 0.5')
+### MA(4): changing order
+ma_4 <- arima.sim(model=list(order=c(0,0,4),ma=c(0.5,0.5,0.5,0.5)),n=100)
+plot(ma_4,ylab='Value',main='MA(4) 0.5')
+### changing omega
+ma_1_09 <- arima.sim(model=list(order=c(0,0,1),ma=c(0.9)),n=100)
+plot(ma_1_09,ylab='Value',main='MA(1) 0.9')
+### look at corresponding acfs
+acf(ma_1,main='MA(1) 0.5')
+acf(ma_4,main='MA(4) 0.5')
+acf(ma_1_09,main='MA(1) 0.9')
+```
+
+What effects do increasing the order and increasing $\omega$ have?
+
+**ARMA:** AR and MA models can be combined with in the ARMA framework, which is useful to model time series that can only be described using a combination of AR and MA components. An ARMA process is defined as
+
+$x_t=\phi_1 x_{t-1}+...+\phi_p x_{t-p}+\omega_t+\theta_1 \omega_{t-1}+...+\theta_q \omega_{t-q}$, where $p$ and $q$ are the autoregressive and moving average orders, respectively.
+
+### Model fitting
+
+To identify a suitable model for our time series of interest, we first need to determine the autoregressive order $p$ and the moving average order $q$ using the PACF and ACF. Once these have been determined, we can estimate the corresponding parameters (regression coefficients) $\phi$ and $\theta$ using maximum likelihood or minimize conditional sum-of-squares.
+
+Let' go back to our precipitation example time series and identify a suitable ARMA model for it.
+
+```{r,fig.height = 5, fig.width = 10}
+### remove the seasonal cycle: make time series stationary
+### remove monthly mean
+monthly_mean <- aggregate(data_P$RS,by=list(format(data_P$Date,'%m')),FUN=mean,na.rm=TRUE)
+### compose daily vector of monthly mean
+norm_vect <- rep(monthly_mean$x,times=c(31,28,31,30,31,30,31,31,30,31,30,31))
+### repeat by number of years
+norm_P <- rep(norm_vect,2019-1974)
+### substract from original series
+data_norm <- data_P$RS-norm_P
+plot(data_norm[1:1000],type='h',ylab='P norm')
+
+### look at PACF and ACF
+par(mfrow=c(1,2))
+pacf(na.omit(data_norm),main='Precipitation')
+acf(na.omit(data_norm),main='Precipitation')
+### There seem to be both high-order MA and AR components.
+### Let's try AR(1) with MA(3)
+### estimate parameters
+arma_P <- arima(data_norm,order=c(1,0,3))
+### look at parameters
+arma_P
+```
+
+### Forecasting and stochastic simulation
+
+Now that we have a model for the precipitation time series, we can use it to make predictions for future time steps.
+
+```{r,fig.height = 5, fig.width = 10}
+### prediction for x_t+1
+pred <- predict(arma_P,n.ahead=1)$pred
+### plot prediction
+par(mfrow=c(1,1))
+plot(c(data_P$RS[(length(data_P$RS)-365):length(data_P$RS)],NA),
+     type='h',ylab=c('Precipitation (mm)'))
+### add prediction, remember, we need to read seasonality
+lines(367,pred+norm_P[367],col='red',type='h')
+```
+
+Alternatively, we can use our model to generate stochastic time series of our phenomena, i.e. a different realization of our process with similar statistical time series characteristics but a different temporal evolution.
+
+```{r,fig.height = 5, fig.width = 10}
+### store model coefficients
+coefs <- coefficients(arma_P)
+### simulate three years of precipitation anomalies
+sim <- arima.sim(model=list('ar'=coefs[1], 'ma'=c(coefs[2])),n=1000)
+### recombine with seasonality
+sim_season <- norm_P[1:length(sim)]+sim
+par(mfrow=c(1,2))
+plot(sim_season,type='h',ylab='Simulations')
+plot(data_P$RS[1:1000],type='h',ylab='Observations')
+```
+
+Well, definitely not perfect. We would have to work on the transformation of the data.
+
+## Further reading
+
+-   Smoothing: Hastie and Tibshirani (2008). The elements of statistical learning. Chapters 5 (Splines) and 6 (Kernel smoothing and polynomial regression).
+-   Time series analysis: Shumway and Stoffer (2000). Time series analysis and its applications. With R examples
+-   Change point detection (focus on hydrology): Ryberg et al. (2019). Change points in annual peak streamflows: Method comparisons and historical change points in the United States, Journal of Hydrology, <https://doi.org/10.1016/j.jhydrol.2019.124307>.
+
+## What we did not cover
+
+The time domain is not the only perspective we can take to look at time series. Frequency-domain methods offer an alternative perspective.
+
+## Additional Exercises
+
+1.  Download your time series either from the CDC. Visualize the series.
+2.  Smooth your series using a suitable smoothing method.
+3.  Describe the temporal dependence structure of your time series.
+4.  Perform a trend and change point test on your series. Is your series stationary?
+5.  Determine the type of ARMA model suitable for modeling your time series.
